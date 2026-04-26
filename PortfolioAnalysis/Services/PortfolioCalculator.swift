@@ -26,15 +26,29 @@ struct PortfolioCalculator {
 
         for pos in positions {
             let qty = pos.quantity
-            let price = priceService.cachedPrice(for: pos.symbol) ?? pos.price
+
+            // Prefer full quote if available
+            let quote = priceService.cachedQuote(for: pos.symbol)
+            let price = quote?.price ?? priceService.cachedPrice(for: pos.symbol) ?? pos.price
             let value = qty * price
 
-            portfolioTotal += value
-            totalCostBasis += pos.costBasis ?? 0
-            totalGrowth += value - (pos.costBasis ?? 0)
-
-            if pos.symbol == "CASH" {
+            // Cash handling
+            if pos.isCash {
                 cashTotal += value
+                portfolioTotal += value
+                continue
+            }
+
+            // Non-cash positions
+            portfolioTotal += value
+
+            let cost = pos.costBasis ?? 0
+            totalCostBasis += cost
+            totalGrowth += value - cost
+
+            // Daily change
+            if let change = quote?.change {
+                dayChangeTotal += qty * change
             }
         }
 
@@ -47,3 +61,4 @@ struct PortfolioCalculator {
         )
     }
 }
+

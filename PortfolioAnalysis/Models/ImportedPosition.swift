@@ -23,3 +23,18 @@ struct ImportedPosition: Identifiable, Codable {
     /// Optional cost basis (LPL sometimes omits this)
     let costBasis: Double?
 }
+// added extra fields for cash positions
+extension ImportedPosition {
+    var isCash: Bool {
+        let s = symbol.uppercased()
+        let n = name.uppercased()
+
+        return s == "----"
+            || s == "CASH"
+            || n.contains("CASH")
+            || n.contains("MONEY MARKET")
+            || (price == 1.0 && costBasis == nil)
+    }
+}
+// End of ImportedPosition.swift
+

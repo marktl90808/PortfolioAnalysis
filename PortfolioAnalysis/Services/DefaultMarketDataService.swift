@@ -48,8 +48,10 @@ private struct YahooChartResponse: Codable {
 
 public final class DefaultMarketDataService: MarketDataService {
 
-    // MARK: - Cache
+    // MARK: - Caches
     private var priceCache: [String: Double] = [:]
+    private var quoteCache: [String: MarketQuote] = [:]
+
     private let cacheQueue = DispatchQueue(label: "PriceCacheQueue")
 
     // MARK: - Fetch Quote
@@ -69,17 +71,20 @@ public final class DefaultMarketDataService: MarketDataService {
 
         let price = q.regularMarketPrice ?? 0
 
-        // Cache the price
-        cacheQueue.sync {
-            priceCache[symbol] = price
-        }
-
-        return MarketQuote(
+        let quote = MarketQuote(
             symbol: q.symbol,
             price: price,
             change: q.regularMarketChange ?? 0,
             changePercent: q.regularMarketChangePercent ?? 0
         )
+
+        // Cache both price and full quote
+        cacheQueue.sync {
+            priceCache[symbol] = price
+            quoteCache[symbol] = quote
+        }
+
+        return quote
     }
 
     // MARK: - Fetch Historical Prices
@@ -116,6 +121,13 @@ public final class DefaultMarketDataService: MarketDataService {
     func cachedPrice(for symbol: String) -> Double? {
         cacheQueue.sync {
             priceCache[symbol]
+        }
+    }
+
+    // MARK: - Cached Quote (NEW)
+    func cachedQuote(for symbol: String) -> MarketQuote? {
+        cacheQueue.sync {
+            quoteCache[symbol]
         }
     }
 }
