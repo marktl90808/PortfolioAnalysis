@@ -6,13 +6,13 @@
 import Foundation
 
 struct ImportedPosition: Identifiable, Codable {
-    var id: UUID { UUID() }
+    let id: UUID            // ← no default value
 
     let symbol: String
     let name: String
 
     /// Quantity of shares (LPL-compatible)
-    let quantity: Double
+    var quantity: Double
 
     /// Latest known price (from import)
     let price: Double
@@ -23,7 +23,8 @@ struct ImportedPosition: Identifiable, Codable {
     /// Optional cost basis (LPL sometimes omits this)
     let costBasis: Double?
 }
-// added extra fields for cash positions
+
+// MARK: - Cash Detection
 extension ImportedPosition {
     var isCash: Bool {
         let s = symbol.uppercased()
@@ -36,5 +37,3 @@ extension ImportedPosition {
             || (price == 1.0 && costBasis == nil)
     }
 }
-// End of ImportedPosition.swift
-

@@ -106,6 +106,7 @@ extension ImportedPosition {
         }
 
         return ImportedPosition(
+            id: UUID(),
             symbol: symbol,
             name: rawName,
             quantity: quantity,
