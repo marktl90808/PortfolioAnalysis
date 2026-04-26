@@ -7,43 +7,63 @@ import Foundation
 
 extension ImportedPosition {
 
+    // MARK: - TSV Paste Import
+    static func parseTSV(_ text: String) throws -> [ImportedPosition] {
+        let rows = cleanAndSplitTSV(text)
+        guard !rows.isEmpty else { return [] }
+
+        let header = rows[0]
+        let body = Array(rows.dropFirst())
+
+        return try body.compactMap { try ImportedPosition.from(columns: $0, header: header) }
+    }
+
+    // MARK: - TSV Splitter
+    private static func cleanAndSplitTSV(_ text: String) -> [[String]] {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { line in
+                line.split(separator: "\t").map { String($0).trimmingCharacters(in: .whitespaces) }
+            }
+            .filter { !$0.isEmpty }
+    }
+
+    // MARK: - Construct ImportedPosition from row
     static func from(columns: [String], header: [String]) throws -> ImportedPosition {
 
-        // MARK: - Normalize header names
+        // Normalize header keys
         func normalize(_ s: String) -> String {
             s.lowercased()
                 .components(separatedBy: CharacterSet.alphanumerics.inverted)
                 .joined()
         }
 
-        let normalizedHeader: [String: Int] = {
+        let headerMap: [String: Int] = {
             var map: [String: Int] = [:]
             for (i, h) in header.enumerated() {
                 let key = normalize(h)
-                if !key.isEmpty && map[key] == nil {
-                    map[key] = i
-                }
+                if !key.isEmpty { map[key] = i }
             }
             return map
         }()
 
-        // MARK: - Lookup helper
         func value(_ aliases: [String]) -> String? {
             for alias in aliases {
                 let key = normalize(alias)
-                if let idx = normalizedHeader[key], idx < columns.count {
-                    let raw = columns[idx].trimmingCharacters(in: .whitespacesAndNewlines)
-                    if raw != "-" && !raw.isEmpty { return raw }
+                if let idx = headerMap[key], idx < columns.count {
+                    let raw = columns[idx].trimmingCharacters(in: .whitespaces)
+                    if !raw.isEmpty, raw != "-" { return raw }
                 }
             }
             return nil
         }
 
-        // MARK: - Parsing helpers
         func parseDouble(_ raw: String?) -> Double? {
             guard let raw else { return nil }
-            var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s == "-" || s.isEmpty { return nil }
+            var s = raw.trimmingCharacters(in: .whitespaces)
+            if s.isEmpty || s == "-" { return nil }
 
             let isParenNeg = s.hasPrefix("(") && s.hasSuffix(")")
             s = s
@@ -57,101 +77,44 @@ extension ImportedPosition {
             return isParenNeg ? -v : v
         }
 
-        func parseDate(_ raw: String?) -> Date? {
-            guard let raw else { return nil }
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return nil }
-
-            let formats = [
-                "M/d/yy h:mm a 'ET'",
-                "M/d/yy h:mm a",
-                "MM/dd/yyyy",
-                "yyyy-MM-dd"
-            ]
-
-            let df = DateFormatter()
-            df.locale = Locale(identifier: "en_US_POSIX")
-
-            for f in formats {
-                df.dateFormat = f
-                if let d = df.date(from: trimmed) { return d }
-            }
-            return nil
-        }
-
         // MARK: - Extract fields
 
-        let rawTicker = value(["symbol/cusip", "symbol", "ticker"])
-        let rawName   = value(["description", "name"]) ?? ""
+        let rawSymbol = value(["symbol", "ticker", "symbolcusip"])
+        let rawName   = value(["name", "description"]) ?? ""
 
-        // Cash detection
-        func isCashLike(_ s: String?) -> Bool {
-            guard let s else { return false }
-            let n = normalize(s)
-            return n.contains("cash")
-                || n.contains("moneymarket")
-                || n == "----"
+        let quantity = parseDouble(value(["quantity", "shares", "units"])) ?? 0
+        let price    = parseDouble(value(["price", "price$", "price($)"]))
+        let totalVal = parseDouble(value(["value", "value$", "marketvalue"]))
+        let costBasis = parseDouble(value(["costbasis", "costbasis$", "costbasis($)"]))
+
+        // Compute missing price/value
+        let finalPrice: Double = {
+            if let p = price { return p }
+            if quantity > 0, let v = totalVal { return v / quantity }
+            return 0
+        }()
+
+        let finalValue: Double = {
+            if let v = totalVal { return v }
+            return quantity * finalPrice
+        }()
+
+        let symbol = rawSymbol?.uppercased() ?? ""
+
+        guard !symbol.isEmpty else {
+            throw NSError(domain: "ImportError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing symbol"])
         }
 
-        let isCashRow = isCashLike(rawTicker) || isCashLike(rawName)
-
-        let ticker = isCashRow ? "CASH" : (rawTicker ?? "")
-        let name   = isCashRow ? (rawName.isEmpty ? "Cash" : rawName) : rawName
-
-        // LPL rounded quantity (display only)
-        let quantity = isCashRow ? nil : parseDouble(value(["quantity", "shares", "units"]))
-
-        // Price
-        let price = parseDouble(value(["price ($)", "price"]))
-
-        // Value ($)
-        let totalValue = parseDouble(value(["value ($)", "value", "marketvalue"]))
-
-        // Unit cost
-        let explicitUnitCost = parseDouble(value(["unit cost", "unitcost", "avgcost"]))
-
-        // Total cost basis
-        let totalCostBasis = parseDouble(value(["cost basis ($)", "costbasis"]))
-
-        // LPL rule: NEVER recompute cost per share from rounded quantity
-        let costBasisPerShare: Double? = {
-            if isCashRow { return nil }
-            if let unit = explicitUnitCost { return unit }
-            return nil
-        }()
-
-        let dayChangeAmount = parseDouble(value(["day change ($)", "daychange"]))
-
-        // Cash value
-        let cashValue: Double? = {
-            if !isCashRow { return nil }
-            return totalValue ?? totalCostBasis
-        }()
-
-        let acquisitionDate = parseDate(value(["acquisitiondate", "purchasedate"]))
-
-        let accountId =
-            value(["account number", "accountname", "accountid"]) ?? ""
-
-        // MARK: - effectiveQuantity (value ÷ price)
-        let effectiveQuantity: Double? = {
-            guard !isCashRow else { return nil }
-            guard let price, price != 0 else { return nil }
-            guard let totalValue else { return nil }
-            return totalValue / price
-        }()
-
-        // MARK: - Construct model
         return ImportedPosition(
-            ticker: ticker,
-            name: name,
-            quantity: quantity,                 // LPL rounded
-            effectiveQuantity: effectiveQuantity, // inferred precise
-            costBasisPerShare: costBasisPerShare,
-            cashValue: cashValue,
-            dayChangeAmount: dayChangeAmount,
-            acquisitionDate: acquisitionDate,
-            accountId: accountId
+            symbol: symbol,
+            name: rawName,
+            quantity: quantity,
+            price: finalPrice,
+            value: finalValue,
+            costBasis: costBasis
         )
     }
 }
+
+//End of file
+

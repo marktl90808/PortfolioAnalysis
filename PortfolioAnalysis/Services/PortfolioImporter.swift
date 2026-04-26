@@ -6,34 +6,29 @@
 import Foundation
 
 struct PortfolioImporter {
-    enum ImportError: Error { case invalidFormat }
 
-    // Very naive CSV parser expecting at least a ticker column; extend as needed
-    func parseCSV(_ text: String) throws -> [ImportedPosition] {
-        // Split into non-empty lines
-        let rows = text
-            .components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    // MARK: - Public Entry Point (CSV file import)
+    func parseCSVFile(_ text: String) throws -> [ImportedPosition] {
+        let rows = cleanAndSplitCSV(text)
+        guard !rows.isEmpty else { return [] }
 
-        guard let headerRow = rows.first else { return [] }
-        let header = headerRow
-            .split(separator: ",", omittingEmptySubsequences: false)
-            .map(String.init)
+        let header = rows[0]
+        let body = Array(rows.dropFirst())
 
-        var positions: [ImportedPosition] = []
-        positions.reserveCapacity(rows.count - 1)
+        return try body.compactMap { try ImportedPosition.from(columns: $0, header: header) }
+    }
 
-        for row in rows.dropFirst() {
-            let cols = row
-                .split(separator: ",", omittingEmptySubsequences: false)
-                .map(String.init)
-
-            if let position = try? ImportedPosition.from(columns: cols, header: header) {
-                positions.append(position)
+    // MARK: - CSV Splitter
+    private func cleanAndSplitCSV(_ text: String) -> [[String]] {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { line in
+                line.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
             }
-        }
-
-        return positions
+            .filter { !$0.isEmpty }
     }
 }
 
+// End of PortfolioImporter.swifr

@@ -21,25 +21,23 @@ struct DebugDailyGrowthView: View {
 
             Divider().padding(.vertical, 8)
 
-            // Per‑position imported day change (if available)
+            // Per-position snapshot (no more dayChangeAmount on ImportedPosition)
             VStack(alignment: .leading, spacing: 12) {
-                Text("Imported Per‑Position Day Change")
+                Text("Positions Snapshot")
                     .font(.headline)
 
                 ForEach(viewModel.positions) { position in
-                    if let dc = position.dayChangeAmount {
-                        HStack {
-                            Text(position.ticker)
-                                .font(.headline)
+                    HStack {
+                        Text(position.symbol)
+                            .font(.headline)
 
-                            Spacer()
+                        Spacer()
 
-                            Text(dc.formatted(.currency(code: "USD")))
-                                .foregroundColor(dc >= 0 ? .green : .red)
-                        }
-
-                        Divider()
+                        Text(position.value.formatted(.currency(code: "USD")))
+                            .foregroundColor(.secondary)
                     }
+
+                    Divider()
                 }
             }
 
@@ -49,3 +47,4 @@ struct DebugDailyGrowthView: View {
         .navigationTitle("Debug Daily Growth")
     }
 }
+//end of file

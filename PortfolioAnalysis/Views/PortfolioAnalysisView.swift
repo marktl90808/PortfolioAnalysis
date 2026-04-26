@@ -114,48 +114,34 @@ struct PortfolioAnalysisView: View {
                             ForEach(viewModel.positions) { position in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(position.ticker)
+                                        Text(position.symbol)
                                             .font(.headline)
 
-                                        if position.isCash {
-                                            Text("Cash")
+                                        if !position.name.isEmpty {
+                                            Text(position.name)
                                                 .font(.subheadline)
                                                 .foregroundColor(.secondary)
+                                        }
 
-                                            Text(position.cashValue ?? 0,
-                                                 format: .currency(code: "USD"))
-                                            .font(.caption)
-                                        } else {
-                                            if !position.name.isEmpty {
-                                                Text(position.name)
-                                                    .font(.subheadline)
-                                                    .foregroundColor(.secondary)
-                                            }
+                                        HStack(spacing: 16) {
+                                            Text("Qty: \(position.quantity, specifier: "%.4f")")
+                                            Text("Price: \(position.price, format: .currency(code: "USD"))")
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
 
-                                            HStack(spacing: 16) {
-                                                Text("Qty: \(position.quantity ?? 0, specifier: "%.4f")")
-                                                Text("Cost: \(position.costBasisPerShare ?? 0, specifier: "%.2f")")
-                                            }
+                                        Text("Value: \(position.value, format: .currency(code: "USD"))")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
-                                        }
-                                    }
 
-                                    Spacer()
-
-                                    VStack(alignment: .trailing, spacing: 4) {
-                                        if let date = position.acquisitionDate {
-                                            Text(date.formatted(date: .abbreviated, time: .omitted))
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-
-                                        if !position.accountId.isEmpty {
-                                            Text(position.accountId)
+                                        if let cost = position.costBasis {
+                                            Text("Cost Basis: \(cost, format: .currency(code: "USD"))")
                                                 .font(.caption2)
                                                 .foregroundColor(.secondary)
                                         }
                                     }
+
+                                    Spacer()
                                 }
                                 .padding(.vertical, 6)
 
