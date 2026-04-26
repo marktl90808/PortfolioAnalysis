@@ -13,3 +13,5 @@ struct PortfolioAnalysisResult: Identifiable {
     let quantity: Double?
     let totalValue: Double?
 }
+// end of PortfolioAnalysisResult.swift
+

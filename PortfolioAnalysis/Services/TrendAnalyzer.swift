@@ -8,3 +8,5 @@ import Foundation
 protocol TrendAnalyzer {
     func analyze(symbol: String, currentPrice: Double, yearHigh: Double) -> TrendAnalysis
 }
+//End of TrendAnalyzer.swift
+

@@ -14,3 +14,5 @@ struct DefaultTrendAnalyzer: TrendAnalyzer {
         )
     }
 }
+// end of DefaultTrendAnalyzer.swift
+

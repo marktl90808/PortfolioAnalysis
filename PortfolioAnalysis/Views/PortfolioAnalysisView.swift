@@ -176,3 +176,5 @@ struct PortfolioAnalysisView: View {
         }
     }
 }
+// End of PortfolioAnalysisView.swift
+

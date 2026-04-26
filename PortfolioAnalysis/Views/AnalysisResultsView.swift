@@ -187,3 +187,4 @@ struct AnalysisResultsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
+// end of AnalysisResultsView.swift

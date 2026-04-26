@@ -10,3 +10,5 @@ protocol MarketDataService: Sendable {
     func fetchPrices(for symbol: String) async throws -> [PricePoint]
     func cachedPrice(for symbol: String) -> Double?
 }
+// End of MarketDataService.swift
+

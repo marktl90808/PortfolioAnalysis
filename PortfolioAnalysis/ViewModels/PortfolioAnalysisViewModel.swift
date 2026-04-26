@@ -84,3 +84,5 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         }
     }
 }
+// end of file
+
