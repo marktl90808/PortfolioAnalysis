@@ -19,7 +19,7 @@ enum ResultsSortMode: String, CaseIterable, Identifiable {
 
 // MARK: - View
 struct AnalysisResultsView: View {
-    @ObservedObject var viewModel: PortfolioAnalysisViewModel   // ← REQUIRED FIX
+    @ObservedObject var viewModel: PortfolioAnalysisViewModel
 
     let results: [PortfolioAnalysisResult]
     let cashTotal: Double
@@ -98,6 +98,34 @@ struct AnalysisResultsView: View {
         .foregroundColor(.secondary)
     }
 
+    // MARK: - Growth + Percent per position (NEW)
+    @ViewBuilder
+    private func growthAndPercentView(for result: PortfolioAnalysisResult) -> some View {
+        let qty = result.quantity ?? 0
+        let currentPrice = result.analysis.currentPrice
+        let costBasis = result.position.costBasis ?? 0
+
+        let currentValue = qty * currentPrice
+        let growth = currentValue - costBasis
+        let percent = costBasis > 0 ? (growth / costBasis) * 100 : 0
+
+        HStack(spacing: 12) {
+            Text("Growth: \(growth, format: .currency(code: "USD"))")
+                .foregroundColor(
+                    growth > 0 ? .green :
+                    (growth < 0 ? .red : .secondary)
+                )
+
+            Text(String(format: "%.2f%%", percent))
+                .foregroundColor(
+                    percent > 0 ? .green :
+                    (percent < 0 ? .red : .secondary)
+                )
+                .font(.caption)
+        }
+        .font(.caption)
+    }
+
     // MARK: - Body
     var body: some View {
         ScrollView {
@@ -128,6 +156,7 @@ struct AnalysisResultsView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
 
+                    // MARK: Cash Total
                     HStack(spacing: 6) {
                         Text("Cash Total:")
                             .font(.caption.weight(.semibold))
@@ -136,6 +165,7 @@ struct AnalysisResultsView: View {
                             .font(.caption.weight(.semibold))
                     }
 
+                    // MARK: Daily Growth
                     HStack(spacing: 6) {
                         Text("Daily Growth:")
                             .font(.caption.weight(.semibold))
@@ -147,20 +177,53 @@ struct AnalysisResultsView: View {
                                 (dailyGrowthTotal < 0 ? .red : .secondary)
                             )
                     }
+
+                    // MARK: Growth + Percent (HEADER)
+                    let totalGrowth = viewModel.totalGrowth
+                    let totalCost = viewModel.totalCostBasis
+
+                    if totalCost > 0 {
+                        let percent = (totalGrowth / totalCost) * 100
+
+                        HStack(spacing: 6) {
+                            Text("Growth:")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.secondary)
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(totalGrowth, format: .currency(code: "USD"))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(
+                                        totalGrowth > 0 ? .green :
+                                        (totalGrowth < 0 ? .red : .secondary)
+                                    )
+
+                                Text(String(format: "%.2f%%", percent))
+                                    .font(.caption2)
+                                    .foregroundColor(
+                                        percent > 0 ? .green :
+                                        (percent < 0 ? .red : .secondary)
+                                    )
+                            }
+                        }
+                    }
                 }
 
                 // MARK: Results List
                 ForEach(Array(sortedResults.enumerated()), id: \.offset) { _, result in
                     NavigationLink {
                         StockDetailView(
-                            viewModel: viewModel,                 // ← FIX
-                            symbol: result.analysis.symbol        // ← FIX
+                            viewModel: viewModel,
+                            symbol: result.analysis.symbol
                         )
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             symbolAndNameView(for: result)
                             quantityAndPriceView(for: result)
                             valueAndGapView(for: result)
+
+                            // NEW: Growth + Percent per position
+                            growthAndPercentView(for: result)
 
                             ResultHighComparisonView(
                                 current: result.analysis.currentPrice,

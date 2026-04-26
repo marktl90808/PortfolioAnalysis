@@ -13,5 +13,4 @@ struct MarketQuote: Codable, Sendable {
     let change: Double
     let changePercent: Double
 }
-// end
 // end of MarketQuote.swift
