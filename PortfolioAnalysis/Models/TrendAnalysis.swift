@@ -9,36 +9,25 @@
 
 import Foundation
 
-struct TrendAnalysis: Identifiable, Codable {
+struct TrendAnalysis: Codable {
 
-    // MARK: - Identity
-    // SwiftUI uses this for ForEach and lists.
-    var id = UUID()
-
-    // MARK: - Core Price Data
-    let symbol: String
+    // MARK: - Price Metrics
     let currentPrice: Double
     let yearHighPrice: Double
-
-    // Difference from 52‑week high
     let dollarDifferenceFromYearHigh: Double
     let percentDifferenceFromYearHigh: Double
 
-    // MARK: - Trend Category (your existing enum)
-    // Must match your TrendCategory.swift file.
+    // MARK: - Trend Classification
     let trend: TrendCategory
 
-    // MARK: - Slope Metrics
-    // These are computed using either Simple Delta or Linear Regression.
+    // MARK: - Slopes
     let shortTermSlope: Double
     let mediumTermSlope: Double
     let longTermSlope: Double
 
-    // MARK: - Trend Direction Change
-    // improving / worsening / bullishReversal / bearishReversal / flat
+    // MARK: - Direction Change
     let directionChange: TrendDirectionChange
 
     // MARK: - Slope Method Used
-    // So the UI can show which method was active when this was computed.
     let slopeMethodUsed: SlopeMethod
 }

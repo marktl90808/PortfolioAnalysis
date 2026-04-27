@@ -5,42 +5,50 @@
 
 import Foundation
 
-final class DefaultTrendAnalyzer: TrendAnalyzer {
+final class DefaultTrendAnalyzer {
 
-    func analyze(
-        symbol: String,
-        prices: [PricePoint],
-        slopeMethod: SlopeMethod
-    ) -> TrendAnalysis {
+    // MARK: - Public Entry Point
+    func analyze(symbol: String, prices: [PricePoint], slopeMethod: SlopeMethod) -> TrendAnalysis {
 
-        let currentPrice = prices.last?.close ?? 0
-        let yearHigh = prices.map { $0.close }.max() ?? currentPrice
+        guard let latest = prices.last else {
+            return TrendAnalysis(
+                currentPrice: 0,
+                yearHighPrice: 0,
+                dollarDifferenceFromYearHigh: 0,
+                percentDifferenceFromYearHigh: 0,
+                trend: .unknown,
+                shortTermSlope: 0,
+                mediumTermSlope: 0,
+                longTermSlope: 0,
+                directionChange: .none,
+                slopeMethodUsed: slopeMethod
+            )
+        }
 
-        let dollarDiff = yearHigh - currentPrice
-        let percentDiff = yearHigh > 0 ? (dollarDiff / yearHigh) * 100 : 0
+        let currentPrice = latest.close
+        let yearHighPrice = prices.map { $0.close }.max() ?? currentPrice
+        let dollarDiff = currentPrice - yearHighPrice
+        let percentDiff = (dollarDiff / yearHighPrice) * 100
 
-        let shortSlope = slope(for: prices, method: slopeMethod, window: 5)
-        let mediumSlope = slope(for: prices, method: slopeMethod, window: 20)
-        let longSlope = slope(for: prices, method: slopeMethod, window: 60)
+        // Compute slopes
+        let shortSlope = computeSlope(prices: prices, window: 5, method: slopeMethod)
+        let mediumSlope = computeSlope(prices: prices, window: 20, method: slopeMethod)
+        let longSlope = computeSlope(prices: prices, window: 60, method: slopeMethod)
 
         let trendCategory = classifyTrend(
-            currentPrice: currentPrice,
-            yearHigh: yearHigh,
             short: shortSlope,
             medium: mediumSlope,
             long: longSlope
         )
 
-        let directionChange = classifyDirectionChange(
+        let directionChange = detectDirectionChange(
             short: shortSlope,
-            medium: mediumSlope,
-            long: longSlope
+            medium: mediumSlope
         )
 
         return TrendAnalysis(
-            symbol: symbol,
             currentPrice: currentPrice,
-            yearHighPrice: yearHigh,
+            yearHighPrice: yearHighPrice,
             dollarDifferenceFromYearHigh: dollarDiff,
             percentDifferenceFromYearHigh: percentDiff,
             trend: trendCategory,
@@ -53,37 +61,26 @@ final class DefaultTrendAnalyzer: TrendAnalyzer {
     }
 
     // MARK: - Slope Calculation
+    private func computeSlope(prices: [PricePoint], window: Int, method: SlopeMethod) -> Double {
+        guard prices.count >= window else { return 0 }
 
-    private func slope(
-        for prices: [PricePoint],
-        method: SlopeMethod,
-        window: Int
-    ) -> Double {
-        guard prices.count > 1 else { return 0 }
+        let slice = Array(prices.suffix(window))
+        let closes = slice.map { $0.close }
 
         switch method {
         case .simpleDelta:
-            return simpleDeltaSlope(prices, days: window)
+            return closes.last! - closes.first!
 
         case .linearRegression:
-            let slice = Array(prices.suffix(window))
-            return regressionSlope(slice)
+            return linearRegressionSlope(values: closes)
         }
     }
 
-    private func simpleDeltaSlope(_ prices: [PricePoint], days: Int) -> Double {
-        guard prices.count > days else { return 0 }
-        let recent = prices[prices.count - 1].close
-        let past = prices[prices.count - days - 1].close
-        return recent - past
-    }
-
-    private func regressionSlope(_ prices: [PricePoint]) -> Double {
-        guard prices.count > 1 else { return 0 }
-
-        let n = Double(prices.count)
-        let xs = prices.indices.map { Double($0) }
-        let ys = prices.map { $0.close }
+    // MARK: - Linear Regression Slope
+    private func linearRegressionSlope(values: [Double]) -> Double {
+        let n = Double(values.count)
+        let xs = (0..<values.count).map { Double($0) }
+        let ys = values
 
         let sumX = xs.reduce(0, +)
         let sumY = ys.reduce(0, +)
@@ -93,52 +90,48 @@ final class DefaultTrendAnalyzer: TrendAnalyzer {
         let numerator = (n * sumXY) - (sumX * sumY)
         let denominator = (n * sumX2) - (sumX * sumX)
 
-        return denominator != 0 ? numerator / denominator : 0
+        return denominator == 0 ? 0 : numerator / denominator
     }
 
-    // MARK: - Trend Category (placeholder or your existing logic)
+    // MARK: - Trend Classification
+    private func classifyTrend(short: Double, medium: Double, long: Double) -> TrendCategory {
 
-    private func classifyTrend(
-        currentPrice: Double,
-        yearHigh: Double,
-        short: Double,
-        medium: Double,
-        long: Double
-    ) -> TrendCategory {
-        // Replace with your existing logic if needed
+        // Strong Uptrend
         if short > 0 && medium > 0 && long > 0 {
-            return .growth
-        } else if short < 0 && medium < 0 && long < 0 {
-            return .downward
-        } else {
+            return .strongUp
+        }
+
+        // Mild Uptrend
+        if short > 0 && medium >= 0 {
+            return .up
+        }
+
+        // Flat
+        if abs(short) < 0.01 && abs(medium) < 0.01 {
             return .flat
         }
+
+        // Mild Downtrend
+        if short < 0 && medium <= 0 {
+            return .down
+        }
+
+        // Strong Downtrend
+        if short < 0 && medium < 0 && long < 0 {
+            return .strongDown
+        }
+
+        return .unknown
     }
 
-    // MARK: - Direction Change
-
-    private func classifyDirectionChange(
-        short: Double,
-        medium: Double,
-        long: Double
-    ) -> TrendDirectionChange {
-
-        if short > medium && medium > long {
-            return .improving
+    // MARK: - Direction Change Detection
+    private func detectDirectionChange(short: Double, medium: Double) -> TrendDirectionChange {
+        if short > 0 && medium < 0 {
+            return .turningUp
         }
-
-        if short < medium && medium < long {
-            return .worsening
+        if short < 0 && medium > 0 {
+            return .turningDown
         }
-
-        if long < 0 && short > 0 {
-            return .bullishReversal
-        }
-
-        if long > 0 && short < 0 {
-            return .bearishReversal
-        }
-
-        return .flat
+        return .none
     }
 }
