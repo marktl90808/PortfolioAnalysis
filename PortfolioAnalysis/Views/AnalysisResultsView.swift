@@ -17,7 +17,6 @@ enum ResultsSortMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - View
 struct AnalysisResultsView: View {
     @ObservedObject var viewModel: PortfolioAnalysisViewModel
 
@@ -33,31 +32,25 @@ struct AnalysisResultsView: View {
         return high > 0 ? (1 - (current / high)) * 100 : 0
     }
 
-    // MARK: - Sorting Logic
     private var sortedResults: [PortfolioAnalysisResult] {
         switch sortMode {
         case .gapAscending:
             return results.sorted { percentBelow($0) < percentBelow($1) }
-
         case .gapDescending:
             return results.sorted { percentBelow($0) > percentBelow($1) }
-
         case .valueAscending:
             return results.sorted { ($0.totalValue ?? 0) < ($1.totalValue ?? 0) }
-
         case .valueDescending:
             return results.sorted { ($0.totalValue ?? 0) > ($1.totalValue ?? 0) }
-
         case .tickerAscending:
             return results.sorted { $0.analysis.symbol < $1.analysis.symbol }
-
         case .tickerDescending:
             return results.sorted { $0.analysis.symbol > $1.analysis.symbol }
         }
     }
 
     // MARK: - Row Components
-    @ViewBuilder
+
     private func symbolAndNameView(for result: PortfolioAnalysisResult) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -73,24 +66,22 @@ struct AnalysisResultsView: View {
         }
     }
 
-    @ViewBuilder
     private func quantityAndPriceView(for result: PortfolioAnalysisResult) -> some View {
-        let qty: Double = result.quantity ?? 0
-        let currentPrice: Double = result.analysis.currentPrice
+        let qty = result.quantity ?? 0
+        let currentPrice = result.analysis.currentPrice
 
-        HStack(spacing: 12) {
+        return HStack(spacing: 12) {
             Text(String(format: "Qty: %.3f", qty))
             Text("Current: \(currentPrice, format: .currency(code: "USD"))")
         }
         .font(.subheadline)
     }
 
-    @ViewBuilder
     private func valueAndGapView(for result: PortfolioAnalysisResult) -> some View {
-        let totalValue: Double = result.totalValue ?? 0
-        let gapDollar: Double = result.analysis.dollarDifferenceFromYearHigh
+        let totalValue = result.totalValue ?? 0
+        let gapDollar = result.analysis.dollarDifferenceFromYearHigh
 
-        HStack(spacing: 12) {
+        return HStack(spacing: 12) {
             Text("Value: \(totalValue, format: .currency(code: "USD"))")
             Text("Gap: \(gapDollar, format: .currency(code: "USD"))")
         }
@@ -98,8 +89,6 @@ struct AnalysisResultsView: View {
         .foregroundColor(.secondary)
     }
 
-    // MARK: - Growth + Percent per position (NEW)
-    @ViewBuilder
     private func growthAndPercentView(for result: PortfolioAnalysisResult) -> some View {
         let qty = result.quantity ?? 0
         let currentPrice = result.analysis.currentPrice
@@ -109,107 +98,166 @@ struct AnalysisResultsView: View {
         let growth = currentValue - costBasis
         let percent = costBasis > 0 ? (growth / costBasis) * 100 : 0
 
-        HStack(spacing: 12) {
-            Text("Growth: \(growth, format: .currency(code: "USD"))")
-                .foregroundColor(
-                    growth > 0 ? .green :
-                    (growth < 0 ? .red : .secondary)
-                )
+        let arrow: String
+        let color: Color
+
+        if growth > 0 {
+            arrow = "▲"
+            color = .green
+        } else if growth < 0 {
+            arrow = "▼"
+            color = .red
+        } else {
+            arrow = "—"
+            color = .secondary
+        }
+
+        return HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                Text(arrow)
+                Text(growth, format: .currency(code: "USD"))
+            }
+            .foregroundColor(color)
 
             Text(String(format: "%.2f%%", percent))
-                .foregroundColor(
-                    percent > 0 ? .green :
-                    (percent < 0 ? .red : .secondary)
-                )
+                .foregroundColor(color)
                 .font(.caption)
         }
         .font(.caption)
     }
 
+    private func trendDirectionView(for result: PortfolioAnalysisResult) -> some View {
+        let d = result.analysis.directionChange
+
+        let text: String
+        let icon: String
+        let color: Color
+
+        switch d {
+        case .improving:
+            text = "Improving"
+            icon = "arrow.up.right"
+            color = .green
+        case .worsening:
+            text = "Worsening"
+            icon = "arrow.down.right"
+            color = .red
+        case .bullishReversal:
+            text = "Bullish Reversal"
+            icon = "arrow.triangle.2.circlepath"
+            color = .green
+        case .bearishReversal:
+            text = "Bearish Reversal"
+            icon = "arrow.triangle.2.circlepath"
+            color = .red
+        case .flat:
+            text = "Flat"
+            icon = "minus"
+            color = .secondary
+        }
+
+        return HStack {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .font(.caption)
+        .foregroundColor(color)
+    }
+
+    private func headerView() -> some View {
+        let totalGrowth = viewModel.totalGrowth
+        let totalCost = viewModel.totalCostBasis
+        let headerPercent = totalCost > 0 ? (totalGrowth / totalCost) * 100 : 0
+
+        return VStack(alignment: .leading, spacing: 8) {
+
+            HStack {
+                Text("Results")
+                    .font(.largeTitle.bold())
+
+                Spacer()
+
+                Menu {
+                    Picker("Sort Mode", selection: $sortMode) {
+                        ForEach(ResultsSortMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                } label: {
+                    Label(sortMode.rawValue, systemImage: "arrow.up.arrow.down.circle")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+
+            Text("Sorted using: \(sortMode.rawValue)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            // Slope method picker
+            Picker("Slope Method", selection: $viewModel.slopeMethod) {
+                ForEach(SlopeMethod.allCases) { method in
+                    Text(method.rawValue).tag(method)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            // Cash Total
+            HStack(spacing: 6) {
+                Text("Cash Total:")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Text(cashTotal, format: .currency(code: "USD"))
+                    .font(.caption.weight(.semibold))
+            }
+
+            // Daily Growth
+            HStack(spacing: 6) {
+                Text("Daily Growth:")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Text(dailyGrowthTotal, format: .currency(code: "USD"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(
+                        dailyGrowthTotal > 0 ? .green :
+                        (dailyGrowthTotal < 0 ? .red : .secondary)
+                    )
+            }
+
+            // Growth + Percent (header)
+            if totalCost > 0 {
+                HStack(spacing: 6) {
+                    Text("Growth:")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(totalGrowth, format: .currency(code: "USD"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(
+                                totalGrowth > 0 ? .green :
+                                (totalGrowth < 0 ? .red : .secondary)
+                            )
+
+                        Text(String(format: "%.2f%%", headerPercent))
+                            .font(.caption2)
+                            .foregroundColor(
+                                headerPercent > 0 ? .green :
+                                (headerPercent < 0 ? .red : .secondary)
+                            )
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Body
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
 
-                // MARK: Header
-                VStack(alignment: .leading, spacing: 8) {
+                headerView()
 
-                    HStack {
-                        Text("Results")
-                            .font(.largeTitle.bold())
-
-                        Spacer()
-
-                        Menu {
-                            Picker("Sort Mode", selection: $sortMode) {
-                                ForEach(ResultsSortMode.allCases) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                        } label: {
-                            Label(sortMode.rawValue, systemImage: "arrow.up.arrow.down.circle")
-                                .font(.caption.weight(.semibold))
-                        }
-                    }
-
-                    Text("Sorted using: \(sortMode.rawValue)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    // MARK: Cash Total
-                    HStack(spacing: 6) {
-                        Text("Cash Total:")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-                        Text(cashTotal, format: .currency(code: "USD"))
-                            .font(.caption.weight(.semibold))
-                    }
-
-                    // MARK: Daily Growth
-                    HStack(spacing: 6) {
-                        Text("Daily Growth:")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-                        Text(dailyGrowthTotal, format: .currency(code: "USD"))
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(
-                                dailyGrowthTotal > 0 ? .green :
-                                (dailyGrowthTotal < 0 ? .red : .secondary)
-                            )
-                    }
-
-                    // MARK: Growth + Percent (HEADER)
-                    let totalGrowth = viewModel.totalGrowth
-                    let totalCost = viewModel.totalCostBasis
-
-                    if totalCost > 0 {
-                        let percent = (totalGrowth / totalCost) * 100
-
-                        HStack(spacing: 6) {
-                            Text("Growth:")
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(.secondary)
-
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(totalGrowth, format: .currency(code: "USD"))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(
-                                        totalGrowth > 0 ? .green :
-                                        (totalGrowth < 0 ? .red : .secondary)
-                                    )
-
-                                Text(String(format: "%.2f%%", percent))
-                                    .font(.caption2)
-                                    .foregroundColor(
-                                        percent > 0 ? .green :
-                                        (percent < 0 ? .red : .secondary)
-                                    )
-                            }
-                        }
-                    }
-                }
-
-                // MARK: Results List
                 ForEach(Array(sortedResults.enumerated()), id: \.offset) { _, result in
                     NavigationLink {
                         StockDetailView(
@@ -221,9 +269,8 @@ struct AnalysisResultsView: View {
                             symbolAndNameView(for: result)
                             quantityAndPriceView(for: result)
                             valueAndGapView(for: result)
-
-                            // NEW: Growth + Percent per position
                             growthAndPercentView(for: result)
+                            trendDirectionView(for: result)
 
                             ResultHighComparisonView(
                                 current: result.analysis.currentPrice,
@@ -250,4 +297,3 @@ struct AnalysisResultsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
-// end of AnalysisResultsView.swift

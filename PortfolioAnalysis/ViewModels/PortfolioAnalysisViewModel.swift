@@ -19,6 +19,10 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     @Published private(set) var dayChangeTotal: Double = 0
     @Published var errorMessage: String?
 
+    // ⭐ ADD THIS
+    @Published var slopeMethod: SlopeMethod = .simpleDelta
+
+
     // MARK: - Services
     private let importer = PortfolioImporter()          // CSV importer
     private let calculator = PortfolioCalculator()

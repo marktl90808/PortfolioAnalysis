@@ -6,7 +6,9 @@
 import Foundation
 
 protocol TrendAnalyzer {
-    func analyze(symbol: String, currentPrice: Double, yearHigh: Double) -> TrendAnalysis
+    func analyze(
+        symbol: String,
+        prices: [PricePoint],
+        slopeMethod: SlopeMethod
+    ) -> TrendAnalysis
 }
-//End of TrendAnalyzer.swift
-
