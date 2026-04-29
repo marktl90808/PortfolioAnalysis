@@ -2,98 +2,86 @@
 //  PositionRowView.swift
 //  PortfolioAnalysis
 //
-//  Created by Mark Leonard on 4/26/2026.
-//
 
 import SwiftUI
 
 struct PositionRowView: View {
     let result: PortfolioAnalysisResult
 
-    private var currentValue: Double {
-        result.currentPrice * Double(result.quantity)
+    private var shouldHighlight: Bool {
+        result.gainLoss < -500.0 || result.percentDifferenceFromYearHigh <= -10.0
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 12) {
 
-            if result.isCash {
-                // MARK: - CASH ROW
-                HStack {
-                    Text("Cash")
-                        .font(.headline)
+            // LEFT COLUMN — always 3 lines
+            VStack(alignment: .leading, spacing: 4) {
+                Text(result.symbol)
+                    .font(.subheadline.bold())
+                    .lineLimit(1)
 
-                    Spacer()
+                Text("Shares: \(formattedNumber(result.quantity))")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
 
-                    Text(result.costBasis, format: .currency(code: "USD"))
-                        .font(.footnote.bold())
+                Text("Cost: \(formattedCurrency(result.costBasis))")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+
+
+            // RIGHT COLUMN — always 2 lines
+            VStack(alignment: .trailing, spacing: 4) {
+
+                Text(formattedCurrency(result.totalValue))
+                    .font(.subheadline)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(String(format: "%.2f%%", result.percentDifferenceFromYearHigh))
+                        .font(.caption2)
+                        .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
+                        .lineLimit(1)
+
+                    Text("52WH: \(formattedCurrency(result.yearHighPrice))")
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-            } else {
-                // MARK: - STOCK ROW
-                HStack(spacing: 8) {
-                    Text(result.symbol)
-                        .font(.headline)
-
-                    Text(result.currentPrice, format: .currency(code: "USD"))
-                        .font(.subheadline)
-
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Text(arrowSymbol)
-                            .foregroundColor(arrowColor)
-                            .font(.footnote.bold())
-
-                        Text(currentValue, format: .currency(code: "USD"))
-                            .font(.footnote.bold())
-                            .foregroundColor(arrowColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    Text("52‑wk High: \(result.yearHighPrice, format: .currency(code: "USD"))")
-                        .font(.caption)
-
-                    Text("Δ \(result.dollarDifferenceFromYearHigh, format: .currency(code: "USD"))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                if abs(result.percentDifferenceFromYearHigh) <= 2 {
-                    Text("🎉 Near 52‑week high! Great performance!")
-                        .font(.caption)
-                        .foregroundColor(.green)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .developerLabel("PositionRowView")
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(shouldHighlight ? Color.red.opacity(0.08) : Color(UIColor.systemBackground))
     }
 
-    // MARK: - Arrow Logic (Stocks Only)
-    private var arrowSymbol: String {
-        let basis = result.costBasis
-        let value = result.currentPrice * Double(result.quantity)
 
-        if basis == 0 { return "—" }
-        if value > basis { return "▲" }
-        if value < basis { return "▼" }
-        return "—"
+    // MARK: - Formatters
+
+    private func formattedNumber(_ value: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 6
+        f.minimumFractionDigits = 0
+        f.usesGroupingSeparator = false
+        return f.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
-    private var arrowColor: Color {
-        let basis = result.costBasis
-        let value = result.currentPrice * Double(result.quantity)
+    private func formattedCurrency(_ value: Double) -> String {
+        let absValue = abs(value)
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.locale = Locale.current
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 6
 
-        if basis == 0 { return .secondary }
-        if value > basis { return .green }
-        if value < basis { return .red }
-        return .secondary
+        let absString = f.string(from: NSNumber(value: absValue)) ?? "\(absValue)"
+        return value < 0 ? "-" + absString : absString
     }
 }

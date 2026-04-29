@@ -4,81 +4,109 @@
 //
 
 import SwiftUI
-import Charts
 
 struct StockDetailView: View {
-    @ObservedObject var viewModel: PortfolioAnalysisViewModel
-    let symbol: String
+    let result: PortfolioAnalysisResult
+    let history: [PricePoint]        // 1-year history from ViewModel.priceHistory
 
-    @State private var history: [PricePoint] = []
-    @State private var isLoading = false
-    @State private var loadError: String?
+    @State private var range: TimeRange = .oneMonth
+    @State private var showMA20 = false
+    @State private var showMA200 = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        ScrollView {
+            VStack(spacing: 20) {
 
-            // MARK: - Header
-            Text(symbol)
-                .font(.largeTitle.bold())
-                .padding(.top, 12)
+                // MARK: - Symbol Header
+                VStack(spacing: 4) {
+                    Text(result.symbol)
+                        .font(.largeTitle.bold())
 
-            // MARK: - Chart
-            if isLoading {
-                ProgressView("Loading…")
-                    .padding(.top, 40)
-            } else if let error = loadError {
-                Text(error)
-                    .foregroundColor(.red)
-                    .padding(.top, 40)
-            } else if history.isEmpty {
-                Text("No price history available")
-                    .foregroundColor(.secondary)
-                    .padding(.top, 40)
-            } else {
-                Chart(history) { point in
-                    LineMark(
-                        x: .value("Date", point.date),
-                        y: .value("Close", point.close)
-                    )
-                    .foregroundStyle(.blue)
+                    Text(result.currentPrice,
+                         format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                        .font(.title2)
+                        .foregroundColor(.primary)
+
+                    let pct = result.percentDifferenceFromYearHigh
+                    Text(String(format: "%.2f%% from 52‑week high", pct))
+                        .font(.caption)
+                        .foregroundColor(pct < 0 ? .red : .green)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .month)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated))
+                .padding(.top, 8)
+
+
+                // MARK: - Pro Chart
+                StockPriceChartView(
+                    history: history,
+                    range: range,
+                    showMA20: showMA20,
+                    showMA200: showMA200
+                )
+                .frame(height: 260)
+                .padding(.horizontal, 8)
+
+
+                // MARK: - Time Range Selector
+                HStack(spacing: 10) {
+                    ForEach(TimeRange.allCases) { r in
+                        Text(r.rawValue)
+                            .font(.caption)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(r == range ? Color.blue.opacity(0.2) : Color.clear)
+                            .cornerRadius(6)
+                            .onTapGesture { range = r }
                     }
                 }
-                .frame(height: 260)
                 .padding(.horizontal)
+
+
+                // MARK: - MA Toggles
+                HStack(spacing: 20) {
+                    Toggle("MA20", isOn: $showMA20)
+                    Toggle("MA200", isOn: $showMA200)
+                }
+                .padding(.horizontal)
+                .toggleStyle(.switch)
+
+
+                // MARK: - Position Summary
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Position Details")
+                        .font(.headline)
+
+                    HStack {
+                        Text("Shares:")
+                        Spacer()
+                        Text("\(result.quantity)")
+                    }
+
+                    HStack {
+                        Text("Cost Basis:")
+                        Spacer()
+                        Text(result.costBasis,
+                             format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                    }
+
+                    HStack {
+                        Text("Current Value:")
+                        Spacer()
+                        Text(result.totalValue,
+                             format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                    }
+
+                    HStack {
+                        Text("52‑Week High:")
+                        Spacer()
+                        Text(result.yearHighPrice,
+                             format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 20)
             }
-
-            Spacer()
         }
-        .padding(.bottom)
-        .task {
-            await loadHistory()
-        }
-        .onDisappear {
-            history.removeAll()
-        }
-        .navigationTitle(symbol)
+        .navigationTitle(result.symbol)
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    // MARK: - Load History (Option A)
-    @MainActor
-    private func loadHistory() async {
-        isLoading = true
-        loadError = nil
-
-        let result = await viewModel.fetchHistorySafe(for: symbol)
-
-        if result.isEmpty {
-            loadError = "Unable to load price history."
-        } else {
-            history = result
-        }
-
-        isLoading = false
     }
 }

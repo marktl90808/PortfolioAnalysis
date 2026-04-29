@@ -31,3 +31,5 @@ struct TrendAnalysis: Codable {
     // MARK: - Slope Method Used
     let slopeMethodUsed: SlopeMethod
 }
+//End of TrendAnalysis.swift
+

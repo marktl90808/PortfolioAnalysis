@@ -8,179 +8,141 @@ import SwiftUI
 import Combine
 
 @MainActor
-final class PortfolioAnalysisViewModel: ObservableObject {
-    // MARK: - Persistence Key
-    private let savedPortfolioKey = "SavedPortfolioPositions"
+class PortfolioAnalysisViewModel: ObservableObject {
 
     // MARK: - Published State
-    @Published private(set) var positions: [ImportedPosition] = []
-    @Published private(set) var portfolioTotal: Double = 0
-    @Published private(set) var totalCostBasis: Double = 0
-    @Published private(set) var totalGrowth: Double = 0
-    @Published private(set) var cashTotal: Double = 0
-    @Published private(set) var dayChangeTotal: Double = 0
-    @Published private(set) var errorMessage: String?
 
+    @Published var positions: [ImportedPosition] = []
     @Published var analysisResults: [PortfolioAnalysisResult] = []
-    @Published var slopeMethod: SlopeMethod = .simpleDelta
+    @Published var priceHistory: [String: [PricePoint]] = [:]
+    @Published var isLoading: Bool = false
 
     // MARK: - Services
-    private let importer = PortfolioImporter()
-    private let calculator = PortfolioCalculator()
-    private let trendAnalyzer = DefaultTrendAnalyzer()
-    let priceService = DefaultMarketDataService()
 
-    // MARK: - Init
-    init() {
-        loadSavedPortfolio()
+    private let diskStore = DiskPortfolioStore.shared
+    private let marketData = DefaultMarketDataService()
+
+    // MARK: - Legacy Key (for migration)
+
+    private let legacyKey = "SavedPortfolioPositions"
+
+    // MARK: - Startup
+
+    func startupLoad() async {
+        isLoading = true
+
+        await migrateIfNeeded()
+
+        positions = await diskStore.load()
+
+        await loadAllPriceHistory()
+
+        runAnalysis()
+
+        isLoading = false
     }
 
-    // MARK: - Import From File (CSV)
-    func importFile(url: URL) {
+    // MARK: - Auto Migration
+
+    private func migrateIfNeeded() async {
+        guard let data = UserDefaults.standard.data(forKey: legacyKey) else { return }
+
         do {
-            let _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-
-            let text = try String(contentsOf: url, encoding: .utf8)
-            let imported = try importer.parseCSVFile(text)
-            applyImportedPositions(imported)
-
+            let decoded = try JSONDecoder().decode([ImportedPosition].self, from: data)
+            await diskStore.save(decoded)
+            UserDefaults.standard.removeObject(forKey: legacyKey)
         } catch {
-            errorMessage = "Failed to import file: \(error.localizedDescription)"
+            print("⚠️ Migration failed: \(error)")
         }
     }
 
-    // MARK: - Import From Paste (TSV)
-    func importPastedPositions(_ positions: [ImportedPosition]) {
-        applyImportedPositions(positions)
-    }
+    // MARK: - Price History Loading
 
-    // MARK: - Apply Imported Data
-    private func applyImportedPositions(_ imported: [ImportedPosition]) {
-        guard !imported.isEmpty else {
-            errorMessage = "No valid rows found."
-            return
-        }
+    private func loadAllPriceHistory() async {
+        priceHistory = [:]
 
-        self.positions = imported
-        errorMessage = nil
-
-        // Persist new positions
-        savePortfolio()
-
-        recalcTotals()
-
-        Task {
-            await runAnalysis()
+        for pos in positions where !pos.isCash {
+            do {
+                let history = try await marketData.fetchPrices(for: pos.symbol)
+                priceHistory[pos.symbol] = history
+            } catch {
+                print("⚠️ Failed to load history for \(pos.symbol): \(error)")
+            }
         }
     }
 
-    // MARK: - Recalculate Totals
-    func recalcTotals() {
-        let result = calculator.calculateTotals(for: positions, using: priceService)
+    // MARK: - Analysis
 
-        portfolioTotal = result.portfolioTotal
-        totalCostBasis = result.totalCostBasis
-        totalGrowth = result.totalGrowth
-        cashTotal = result.cashTotal
-        dayChangeTotal = result.dayChangeTotal
+    func runAnalysis() {
+        analysisResults = positions.compactMap { pos in
+            if pos.isCash {
+                return .cash(position: pos)
+            }
+
+            guard let history = priceHistory[pos.symbol], !history.isEmpty else {
+                return .noData(position: pos)
+            }
+
+            return .from(position: pos, history: history)
+        }
     }
 
-    // MARK: - Run Full Trend Analysis
-    func runAnalysis() async {
-        var results: [PortfolioAnalysisResult] = []
+    // MARK: - Update Methods
 
-        for pos in positions {
-            guard let symbol = pos.symbol.nonEmpty else { continue }
+    func updateSymbol(for oldSymbol: String, newSymbol: String) {
+        guard let index = positions.firstIndex(where: { $0.symbol == oldSymbol }) else { return }
 
-            let history = await fetchHistorySafe(for: symbol)
+        positions[index].symbol = newSymbol
 
-            let trend = trendAnalyzer.analyze(
-                symbol: symbol,
-                prices: history,
-                slopeMethod: slopeMethod
-            )
-
-            let result = PortfolioAnalysisResult(
-                symbol: symbol,
-                quantity: pos.quantity ?? 0,
-                costBasis: pos.costBasis ?? 0,
-                currentPrice: trend.currentPrice,
-                yearHighPrice: trend.yearHighPrice,
-                dollarDifferenceFromYearHigh: trend.dollarDifferenceFromYearHigh,
-                percentDifferenceFromYearHigh: trend.percentDifferenceFromYearHigh,
-                trend: trend.trend,
-                shortTermSlope: trend.shortTermSlope,
-                mediumTermSlope: trend.mediumTermSlope,
-                longTermSlope: trend.longTermSlope,
-                directionChange: trend.directionChange,
-                slopeMethodUsed: trend.slopeMethodUsed,
-                isCash: pos.isCash        // <-- ADD THIS
-)
-
-            results.append(result)
+        if let oldHistory = priceHistory.removeValue(forKey: oldSymbol) {
+            priceHistory[newSymbol] = oldHistory
         }
 
-        self.analysisResults = results
+        Task { await diskStore.save(positions) }
+        runAnalysis()
     }
 
-    // MARK: - Reset State
-    func resetState() {
+    func updateQuantity(for symbol: String, newQuantity: Double) {
+        guard let index = positions.firstIndex(where: { $0.symbol == symbol }) else { return }
+
+        positions[index].quantity = newQuantity
+
+        Task { await diskStore.save(positions) }
+        runAnalysis()
+    }
+
+    func updateCostBasis(for symbol: String, newCostBasis: Double) {
+        guard let index = positions.firstIndex(where: { $0.symbol == symbol }) else { return }
+
+        positions[index].costBasis = newCostBasis
+
+        Task { await diskStore.save(positions) }
+        runAnalysis()
+    }
+
+    // MARK: - Add / Remove
+
+    func addPosition(_ pos: ImportedPosition) {
+        positions.append(pos)
+        Task { await diskStore.save(positions) }
+        runAnalysis()
+    }
+
+    func removePosition(symbol: String) {
+        positions.removeAll { $0.symbol == symbol }
+        priceHistory.removeValue(forKey: symbol)
+
+        Task { await diskStore.save(positions) }
+        runAnalysis()
+    }
+
+    // MARK: - Clear All
+
+    func clearPortfolio() {
         positions = []
-        portfolioTotal = 0
-        totalCostBasis = 0
-        totalGrowth = 0
-        cashTotal = 0
-        dayChangeTotal = 0
+        priceHistory = [:]
         analysisResults = []
-        errorMessage = nil
 
-        // Clear persisted data
-        UserDefaults.standard.removeObject(forKey: savedPortfolioKey)
-    }
-
-    // MARK: - Safe History Fetch
-    func fetchHistorySafe(for symbol: String) async -> [PricePoint] {
-        do {
-            return try await priceService.fetchPrices(for: symbol)
-        } catch {
-            print("History fetch failed for \(symbol): \(error)")
-            return []
-        }
-    }
-
-    // MARK: - Persistence
-    private func savePortfolio() {
-        guard !positions.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: savedPortfolioKey)
-            return
-        }
-
-        if let encoded = try? JSONEncoder().encode(positions) {
-            UserDefaults.standard.set(encoded, forKey: savedPortfolioKey)
-        }
-    }
-
-    private func loadSavedPortfolio() {
-        guard let data = UserDefaults.standard.data(forKey: savedPortfolioKey),
-              let decoded = try? JSONDecoder().decode([ImportedPosition].self, from: data) else {
-            return
-        }
-
-        self.positions = decoded
-
-        // Rebuild totals and analysis from saved positions
-        recalcTotals()
-
-        Task {
-            await runAnalysis()
-        }
-    }
-}
-
-// MARK: - Helper
-private extension String {
-    var nonEmpty: String? {
-        self.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
+        Task { await diskStore.clear() }
     }
 }
