@@ -101,14 +101,14 @@ class MarketDataService: ObservableObject {
 
         var points: [PricePoint] = []
         for (i, ts) in timestamps.enumerated() {
-            guard let close = quote.close?[safe: i] ?? nil else { continue }
+            guard let close = quote.close?[safe: i].flatMap({ $0 }) else { continue }
             points.append(PricePoint(
                 date:   Date(timeIntervalSince1970: TimeInterval(ts)),
-                open:   quote.open?[safe: i]   ?? nil ?? close,
-                high:   quote.high?[safe: i]   ?? nil ?? close,
-                low:    quote.low?[safe: i]    ?? nil ?? close,
+                open:   quote.open?[safe: i].flatMap({ $0 })   ?? close,
+                high:   quote.high?[safe: i].flatMap({ $0 })   ?? close,
+                low:    quote.low?[safe: i].flatMap({ $0 })    ?? close,
                 close:  close,
-                volume: quote.volume?[safe: i] ?? nil ?? 0
+                volume: quote.volume?[safe: i].flatMap({ $0 }) ?? 0
             ))
         }
         return points.sorted { $0.date < $1.date }
