@@ -4,8 +4,7 @@
 //
 //  Created by Mark Leonard on 4/28/2026.
 //
-
-
+import Foundation
 import SwiftUI
 import Charts
 
@@ -90,38 +89,43 @@ struct MultiSymbolStockChartView: View {
             .chartYAxis {
                 AxisMarks(position: .leading) {
                     AxisGridLine()
-                    AxisValueLabel {
-                        if let v = $0.as(Double.self) {
-                            Text(String(format: "%.0f%%", v))
-                        }
-                    }
                 }
             }
             .padding(.vertical, 8)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        isDragging = true
-                        if let date = approximateDate(atX: value.location.x) {
-                            dragDate = date
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
-                    .onEnded { _ in
-                        isDragging = false
-                        dragDate = nil
-                    }
-            )
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    isDragging = true
+                                    if let date = approximateDate(atX: value.location.x, width: geo.size.width) {
+                                        dragDate = date
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    }
+                                }
+                                .onEnded { _ in
+                                    isDragging = false
+                                    dragDate = nil
+                                }
+                        )
+                }
+            }
         }
     }
 
-    private func approximateDate(atX x: CGFloat) -> Date? {
+    private func approximateDate(atX x: CGFloat, width: CGFloat) -> Date? {
         guard let firstSeries = filteredSeries.first?.points else { return nil }
-        let idx = Int((x / UIScreen.main.bounds.width) * CGFloat(firstSeries.count))
+        guard width > 0 else { return nil }
+        let idx = Int((x / width) * CGFloat(firstSeries.count))
         return firstSeries.indices.contains(idx) ? firstSeries[idx].date : nil
     }
 
     private func nearestPoint(in points: [PricePoint], to date: Date) -> PricePoint? {
-        points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+        points.min(by: {
+            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
+        })
     }
 }

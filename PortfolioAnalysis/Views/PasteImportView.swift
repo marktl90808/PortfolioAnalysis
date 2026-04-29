@@ -90,7 +90,7 @@ struct PasteImportView: View {
                                     HStack {
                                         Text(pos.symbol).font(.body.bold())
                                         Spacer()
-                                        Text("Qty: \(pos.quantity ?? 0, specifier: "%.2f")")
+                                        Text("Qty: \(pos.quantity, specifier: "%.2f")")
                                             .foregroundColor(.secondary)
                                     }
                                 }

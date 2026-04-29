@@ -8,7 +8,7 @@ import SwiftUI
 import Combine
 
 @MainActor
-class PortfolioAnalysisViewModel: ObservableObject {
+final class PortfolioAnalysisViewModel: ObservableObject {
 
     // MARK: - Published State
 
@@ -16,6 +16,7 @@ class PortfolioAnalysisViewModel: ObservableObject {
     @Published var analysisResults: [PortfolioAnalysisResult] = []
     @Published var priceHistory: [String: [PricePoint]] = [:]
     @Published var isLoading: Bool = false
+    @Published var slopeMethod: SlopeMethod = .simpleDelta
 
     // MARK: - Services
 
@@ -33,13 +34,29 @@ class PortfolioAnalysisViewModel: ObservableObject {
 
         await migrateIfNeeded()
 
-        positions = await diskStore.load()
+        let loaded = await diskStore.load()
+        positions = loaded
 
         await loadAllPriceHistory()
-
         runAnalysis()
 
         isLoading = false
+    }
+
+    var cashTotal: Double {
+        positions.filter(\.isCash).reduce(0) { $0 + $1.value }
+    }
+
+    var portfolioTotal: Double {
+        positions.reduce(0) { partial, position in
+            partial + currentMarketValue(for: position)
+        }
+    }
+
+    var dayChangeTotal: Double {
+        positions.reduce(0) { partial, position in
+            partial + dayChange(for: position)
+        }
     }
 
     // MARK: - Auto Migration
@@ -48,8 +65,9 @@ class PortfolioAnalysisViewModel: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: legacyKey) else { return }
 
         do {
-            let decoded = try JSONDecoder().decode([ImportedPosition].self, from: data)
-            await diskStore.save(decoded)
+            let decoder = JSONDecoder()
+            let oldPositions = try decoder.decode([ImportedPosition].self, from: data)
+            await diskStore.save(oldPositions)
             UserDefaults.standard.removeObject(forKey: legacyKey)
         } catch {
             print("⚠️ Migration failed: \(error)")
@@ -71,19 +89,42 @@ class PortfolioAnalysisViewModel: ObservableObject {
         }
     }
 
+    func fetchHistorySafe(for symbol: String) async -> [PricePoint] {
+        if let cached = priceHistory[symbol], !cached.isEmpty { return cached }
+
+        do {
+            let history = try await marketData.fetchPrices(for: symbol)
+            priceHistory[symbol] = history
+            return history
+        } catch {
+            print("⚠️ Failed to fetch history for \(symbol): \(error)")
+            return []
+        }
+    }
+
     // MARK: - Analysis
 
     func runAnalysis() {
-        analysisResults = positions.compactMap { pos in
-            if pos.isCash {
-                return .cash(position: pos)
-            }
+        analysisResults = positions.map { pos in
+            if pos.isCash { return PortfolioAnalysisResult.cash(position: pos) }
 
             guard let history = priceHistory[pos.symbol], !history.isEmpty else {
-                return .noData(position: pos)
+                return PortfolioAnalysisResult.noData(position: pos)
             }
 
-            return .from(position: pos, history: history)
+            return PortfolioAnalysisResult.from(position: pos, history: history, slopeMethod: slopeMethod)
+        }
+    }
+
+    func importPastedPositions(_ imported: [ImportedPosition]) {
+        positions = imported
+        priceHistory = [:]
+        analysisResults = []
+
+        Task {
+            await diskStore.save(imported)
+            await loadAllPriceHistory()
+            runAnalysis()
         }
     }
 
@@ -106,6 +147,7 @@ class PortfolioAnalysisViewModel: ObservableObject {
         guard let index = positions.firstIndex(where: { $0.symbol == symbol }) else { return }
 
         positions[index].quantity = newQuantity
+        positions[index].value = positions[index].price * newQuantity
 
         Task { await diskStore.save(positions) }
         runAnalysis()
@@ -144,5 +186,24 @@ class PortfolioAnalysisViewModel: ObservableObject {
         analysisResults = []
 
         Task { await diskStore.clear() }
+    }
+
+    // MARK: - Totals Helpers
+
+    private func currentMarketValue(for position: ImportedPosition) -> Double {
+        if position.isCash { return position.value }
+
+        let marketPrice = priceHistory[position.symbol]?.last?.close ?? position.price
+        return position.quantity * marketPrice
+    }
+
+    private func dayChange(for position: ImportedPosition) -> Double {
+        guard !position.isCash,
+              let history = priceHistory[position.symbol],
+              history.count >= 2 else { return 0 }
+
+        let latest = history[history.count - 1].close
+        let previous = history[history.count - 2].close
+        return (latest - previous) * position.quantity
     }
 }

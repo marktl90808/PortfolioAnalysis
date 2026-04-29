@@ -2,6 +2,8 @@
 //  PositionRowView.swift
 //  PortfolioAnalysis
 //
+//  Row view for a single portfolio analysis result.
+//
 
 import SwiftUI
 
@@ -9,79 +11,169 @@ struct PositionRowView: View {
     let result: PortfolioAnalysisResult
 
     private var shouldHighlight: Bool {
-        result.gainLoss < -500.0 || result.percentDifferenceFromYearHigh <= -10.0
+        let isLargeLoss = result.gainLoss < -500.0
+        let isBelowHighByMoreThan10 = result.percentDifferenceFromYearHigh <= -10.0
+        return isLargeLoss || isBelowHighByMoreThan10
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        ZStack {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.symbol)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-            // LEFT COLUMN — always 3 lines
-            VStack(alignment: .leading, spacing: 4) {
-                Text(result.symbol)
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
+                    HStack(spacing: 10) {
+                        Text("Qty: \(formattedNumber(result.quantity))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                Text("Shares: \(formattedNumber(result.quantity))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                        Text("Cost: \(result.costBasis, format: .currency(code: Locale.current.currencyCode ?? "USD"))")
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+                    }
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-                Text("Cost: \(formattedCurrency(result.costBasis))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(result.totalValue, format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    HStack(spacing: 8) {
+                        Text(String(format: "%.2f%%", result.percentDifferenceFromYearHigh))
+                            .font(.caption2)
+                            .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        HStack(spacing: 4) {
+                            Text("52WH")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+
+                            Text(result.yearHighPrice, format: .currency(code: Locale.current.currencyCode ?? "USD"))
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .fixedSize()
+                    }
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
 
-
-
-            // RIGHT COLUMN — always 2 lines
-            VStack(alignment: .trailing, spacing: 4) {
-
-                Text(formattedCurrency(result.totalValue))
-                    .font(.subheadline)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Text(String(format: "%.2f%%", result.percentDifferenceFromYearHigh))
-                        .font(.caption2)
-                        .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
-                        .lineLimit(1)
-
-                    Text("52WH: \(formattedCurrency(result.yearHighPrice))")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text("PositionRowView")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundColor(Color.primary.opacity(0.85))
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(Color.black.opacity(0.06))
+                        .cornerRadius(6)
+                        .shadow(color: Color.black.opacity(0.04), radius: 1, x: 0, y: 1)
+                        .padding(.trailing, 10)
+                        .padding(.bottom, 2)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .allowsHitTesting(false)
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
         .background(shouldHighlight ? Color.red.opacity(0.08) : Color(UIColor.systemBackground))
     }
 
-
-    // MARK: - Formatters
-
     private func formattedNumber(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.maximumFractionDigits = 6
-        f.minimumFractionDigits = 0
-        f.usesGroupingSeparator = false
-        return f.string(from: NSNumber(value: value)) ?? "\(value)"
-    }
-
-    private func formattedCurrency(_ value: Double) -> String {
-        let absValue = abs(value)
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.locale = Locale.current
-        f.minimumFractionDigits = 2
-        f.maximumFractionDigits = 6
-
-        let absString = f.string(from: NSNumber(value: absValue)) ?? "\(absValue)"
-        return value < 0 ? "-" + absString : absString
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 6
+        formatter.minimumFractionDigits = 0
+        formatter.usesGroupingSeparator = false
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
     }
 }
+
+#if DEBUG
+struct PositionRowView_Previews: PreviewProvider {
+    static var previews: some View {
+        List {
+            PositionRowView(result: sampleResult)
+            PositionRowView(result: sampleResultLoss)
+            PositionRowView(result: sampleResultBelowHigh)
+        }
+        .listStyle(.plain)
+        .previewLayout(.sizeThatFits)
+    }
+
+    static var sampleResult: PortfolioAnalysisResult {
+        PortfolioAnalysisResult(
+            symbol: "AAPL",
+            quantity: 10,
+            costBasis: 1200,
+            currentPrice: 150,
+            yearHighPrice: 180,
+            dollarDifferenceFromYearHigh: -30,
+            percentDifferenceFromYearHigh: -16.67,
+            trend: .up,
+            shortTermSlope: 0,
+            mediumTermSlope: 0,
+            longTermSlope: 0,
+            directionChange: .none,
+            slopeMethodUsed: .simpleDelta,
+            isCash: false
+        )
+    }
+
+    static var sampleResultLoss: PortfolioAnalysisResult {
+        PortfolioAnalysisResult(
+            symbol: "LOSS",
+            quantity: 100,
+            costBasis: 20000,
+            currentPrice: 150,
+            yearHighPrice: 220,
+            dollarDifferenceFromYearHigh: -70,
+            percentDifferenceFromYearHigh: -31.82,
+            trend: .down,
+            shortTermSlope: -1,
+            mediumTermSlope: -2,
+            longTermSlope: -3,
+            directionChange: .none,
+            slopeMethodUsed: .simpleDelta,
+            isCash: false
+        )
+    }
+
+    static var sampleResultBelowHigh: PortfolioAnalysisResult {
+        PortfolioAnalysisResult(
+            symbol: "BELOW",
+            quantity: 5,
+            costBasis: 100,
+            currentPrice: 50,
+            yearHighPrice: 100,
+            dollarDifferenceFromYearHigh: -50,
+            percentDifferenceFromYearHigh: -50.0,
+            trend: .down,
+            shortTermSlope: -0.5,
+            mediumTermSlope: -0.8,
+            longTermSlope: -1.2,
+            directionChange: .none,
+            slopeMethodUsed: .simpleDelta,
+            isCash: false
+        )
+    }
+}
+#endif

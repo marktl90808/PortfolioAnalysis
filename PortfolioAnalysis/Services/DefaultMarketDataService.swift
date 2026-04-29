@@ -46,7 +46,7 @@ private struct YahooChartResponse: Codable {
 
 // MARK: - DefaultMarketDataService
 
-public final class DefaultMarketDataService: MarketDataService {
+final class DefaultMarketDataService: MarketDataService, @unchecked Sendable {
 
     // MARK: - Caches
     private var priceCache: [String: Double] = [:]
