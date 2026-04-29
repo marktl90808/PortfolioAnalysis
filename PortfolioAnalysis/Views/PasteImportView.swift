@@ -14,7 +14,6 @@ struct PasteImportView: View {
     @State private var errorMessage: String?
     @State private var isFileImporterPresented = false
     @State private var previewPositions: [ImportedPosition] = []
-    @State private var navigateToAnalysis = false
 
     var body: some View {
         NavigationStack {
@@ -71,7 +70,7 @@ struct PasteImportView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.secondary.opacity(0.3))
                     )
-                    .onChange(of: pastedText) { _ in updatePreview() }
+                    .onChange(of: pastedText) { _, _ in updatePreview() }
 
                 if let error = errorMessage {
                     Text(error)
@@ -110,9 +109,6 @@ struct PasteImportView: View {
                 Spacer()
             }
             .padding()
-            .navigationDestination(isPresented: $navigateToAnalysis) {
-                AnalysisResultsView(viewModel: viewModel)
-            }
             .navigationTitle("Paste Import")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -152,7 +148,7 @@ struct PasteImportView: View {
         do {
             let positions = try ImportedPosition.parseTSV(pastedText)
             viewModel.importPastedPositions(positions)
-            navigateToAnalysis = true
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }

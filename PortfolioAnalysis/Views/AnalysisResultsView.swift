@@ -17,7 +17,15 @@ struct AnalysisResultsView: View {
             // MARK: - Results List
             List {
                 ForEach(viewModel.analysisResults) { result in
-                    PositionRowView(result: result)
+                    if viewModel.priceHistory[result.symbol] != nil {
+                        NavigationLink {
+                            StockDetailView(initialSymbol: result.symbol, viewModel: viewModel)
+                        } label: {
+                            PositionRowView(result: result)
+                        }
+                    } else {
+                        PositionRowView(result: result)
+                    }
                 }
             }
         }

@@ -15,19 +15,90 @@ extension ImportedPosition {
         let header = rows[0]
         let body = Array(rows.dropFirst())
 
-        return try body.compactMap { try ImportedPosition.from(columns: $0, header: header) }
+        var positions: [ImportedPosition] = []
+        positions.reserveCapacity(body.count)
+
+        for row in body {
+            do {
+                positions.append(try ImportedPosition.from(columns: row, header: header))
+            } catch {
+                // Ignore wrapped/fragment rows that don't represent a full holding.
+                continue
+            }
+        }
+
+        if positions.isEmpty, !body.isEmpty {
+            throw NSError(domain: "ImportError", code: 2, userInfo: [NSLocalizedDescriptionKey: "No valid portfolio rows found"])
+        }
+
+        return positions
     }
 
     // MARK: - TSV Splitter
     private static func cleanAndSplitTSV(_ text: String) -> [[String]] {
-        text
+        let lines = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
-            .map { line in
-                line.split(separator: "\t").map { String($0).trimmingCharacters(in: .whitespaces) }
+
+        guard let headerLine = lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            return []
+        }
+
+        let header = splitTSVLine(headerLine)
+        guard !header.isEmpty else { return [] }
+
+        var rows: [[String]] = [header]
+        var currentRow: [String]? = nil
+
+        for line in lines.drop(while: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }).dropFirst() {
+            let cells = splitTSVLine(line)
+            guard !cells.isEmpty else { continue }
+
+            if currentRow == nil {
+                currentRow = cells
+                continue
             }
-            .filter { !$0.isEmpty }
+
+            // If the previous line didn't complete a row, treat this line as a continuation.
+            if let current = currentRow, current.count < header.count {
+                var merged = current
+                let continuationPrefix = cells.first ?? ""
+
+                if !merged.isEmpty {
+                    let lastIndex = merged.count - 1
+                    merged[lastIndex] = merged[lastIndex].isEmpty
+                        ? continuationPrefix
+                        : merged[lastIndex] + "\n" + continuationPrefix
+                }
+
+                if cells.count > 1 {
+                    merged.append(contentsOf: cells.dropFirst())
+                }
+
+                currentRow = merged
+            } else {
+                rows.append(currentRow ?? [])
+                currentRow = cells
+            }
+
+            if let current = currentRow, current.count >= header.count {
+                rows.append(current)
+                currentRow = nil
+            }
+        }
+
+        if let currentRow {
+            rows.append(currentRow)
+        }
+
+        return rows.filter { !$0.isEmpty }
+    }
+
+    private static func splitTSVLine(_ line: String) -> [String] {
+        line
+            .split(separator: "\t", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
     }
 
     // MARK: - Construct ImportedPosition from row

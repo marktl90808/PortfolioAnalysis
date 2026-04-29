@@ -10,6 +10,10 @@ import SwiftUI
 struct PositionRowView: View {
     let result: PortfolioAnalysisResult
 
+    private var currencyCode: String {
+        Locale.current.currency?.identifier ?? "USD"
+    }
+
     private var shouldHighlight: Bool {
         let isLargeLoss = result.gainLoss < -500.0
         let isBelowHighByMoreThan10 = result.percentDifferenceFromYearHigh <= -10.0
@@ -17,90 +21,70 @@ struct PositionRowView: View {
     }
 
     var body: some View {
-        ZStack {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(result.symbol)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(result.symbol)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                HStack(spacing: 10) {
+                    Text("Qty: \(formattedQuantity(result.quantity))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                    HStack(spacing: 10) {
-                        Text("Qty: \(formattedNumber(result.quantity))")
+                        Text("Cost: \(result.costBasis, format: .currency(code: currencyCode))")
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                }
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(result.totalValue, format: .currency(code: currencyCode))
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                HStack(spacing: 8) {
+                    Text(String(format: "%.2f%%", result.percentDifferenceFromYearHigh))
+                        .font(.caption2)
+                        .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    HStack(spacing: 4) {
+                        Text("52WH")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
-                        Text("Cost: \(result.costBasis, format: .currency(code: Locale.current.currencyCode ?? "USD"))")
+                        Text(result.yearHighPrice, format: .currency(code: currencyCode))
                             .font(.caption2)
+                            .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .layoutPriority(1)
                     }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(result.totalValue, format: .currency(code: Locale.current.currencyCode ?? "USD"))
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    HStack(spacing: 8) {
-                        Text(String(format: "%.2f%%", result.percentDifferenceFromYearHigh))
-                            .font(.caption2)
-                            .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-
-                        HStack(spacing: 4) {
-                            Text("52WH")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-
-                            Text(result.yearHighPrice, format: .currency(code: Locale.current.currencyCode ?? "USD"))
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        .fixedSize()
-                    }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text("PositionRowView")
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .foregroundColor(Color.primary.opacity(0.85))
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        .background(Color.black.opacity(0.06))
-                        .cornerRadius(6)
-                        .shadow(color: Color.black.opacity(0.04), radius: 1, x: 0, y: 1)
-                        .padding(.trailing, 10)
-                        .padding(.bottom, 2)
+                    .fixedSize()
                 }
             }
-            .allowsHitTesting(false)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
         }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .background(shouldHighlight ? Color.red.opacity(0.08) : Color(UIColor.systemBackground))
     }
 
-    private func formattedNumber(_ value: Double) -> String {
+    private func formattedQuantity(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 6
+        formatter.maximumFractionDigits = 3
         formatter.minimumFractionDigits = 0
         formatter.usesGroupingSeparator = false
         return formatter.string(from: NSNumber(value: value)) ?? String(value)
