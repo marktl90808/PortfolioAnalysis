@@ -50,15 +50,16 @@ struct EditPositionView: View {
         let trimmedSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
         let symbolToUse = trimmedSymbol.isEmpty ? position.symbol : trimmedSymbol
         let qty = Double(quantity.trimmingCharacters(in: .whitespacesAndNewlines)) ?? position.quantity
+        let parsedCost = Double(costBasis.trimmingCharacters(in: .whitespacesAndNewlines))
 
-        if symbolToUse != position.symbol {
-            viewModel.updateSymbol(for: position.symbol, newSymbol: symbolToUse)
-        }
-
-        viewModel.updateQuantity(for: symbolToUse, newQuantity: qty)
-
-        if let parsedCost = Double(costBasis.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            viewModel.updateCostBasis(for: symbolToUse, newCostBasis: parsedCost)
+        Task { @MainActor in
+            await viewModel.updateHolding(
+                oldSymbol: position.symbol,
+                newSymbol: symbolToUse,
+                quantity: qty,
+                costBasis: parsedCost
+            )
+            dismiss()
         }
     }
 }

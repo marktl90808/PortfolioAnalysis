@@ -51,7 +51,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingComparisonSheet) {
                 NavigationStack {
-                    MultiSymbolComparisonView(results: viewModel.analysisResults, histories: viewModel.priceHistory)
+                    MultiSymbolComparisonView(viewModel: viewModel)
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: viewModel.isLoading)
@@ -183,18 +183,20 @@ struct PortfolioListView: View {
             // Analysis results list
             List {
                 ForEach(viewModel.analysisResults, id: \.symbol) { result in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(result.symbol)
-                                .font(.headline)
-                            Text(result.trend.rawValue)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                    NavigationLink(destination: StockDetailView(initialSymbol: result.symbol, viewModel: viewModel)) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(result.symbol)
+                                    .font(.headline)
+                                Text(trendLabel(for: result))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text(result.currentPrice, format: .currency(code: currencyCode))
                         }
-                        Spacer()
-                        Text(result.currentPrice, format: .currency(code: currencyCode))
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
                 }
             }
             .listStyle(PlainListStyle())
@@ -218,5 +220,9 @@ struct PortfolioListView: View {
         }
         .buttonStyle(.plain)
         .foregroundColor(.accentColor)
+    }
+
+    private func trendLabel(for result: PortfolioAnalysisResult) -> String {
+        result.isCash ? "no-trend-cash" : result.trend.rawValue
     }
 }

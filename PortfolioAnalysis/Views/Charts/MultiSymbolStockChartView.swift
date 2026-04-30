@@ -12,6 +12,7 @@ struct SymbolSeries: Identifiable {
     let id = UUID()
     let symbol: String
     let history: [PricePoint]
+    let color: Color
 }
 
 struct MultiSymbolStockChartView: View {
@@ -47,7 +48,7 @@ struct MultiSymbolStockChartView: View {
         ZStack {
             Chart {
                 ForEach(Array(filteredSeries.enumerated()), id: \.element.symbol) { index, entry in
-                    let color = palette[index % palette.count]
+                    let color = series.first(where: { $0.symbol == entry.symbol })?.color ?? palette[index % palette.count]
                     let norm = normalized(entry.points)
 
                     ForEach(norm) { p in

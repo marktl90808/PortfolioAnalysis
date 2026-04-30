@@ -7,6 +7,7 @@ struct StockPriceChartView: View {
     let showMA20: Bool
     let showMA200: Bool
     let referenceHigh: Double?
+    let referenceHighColor: Color
 
     @State private var dragLocation: PricePoint?
     @State private var isDragging = false
@@ -24,10 +25,6 @@ struct StockPriceChartView: View {
         let sorted = history.sorted { $0.date < $1.date }
         let now = sorted.last!.date
         let start = range.dateWindow(from: now)
-
-        // Auto density detection
-        let grouped = Dictionary(grouping: sorted) { Calendar.current.startOfDay(for: $0.date) }
-        let isIntraday = grouped.values.contains { $0.count > 5 }
 
         return sorted.filter { $0.date >= start }
     }
@@ -61,6 +58,13 @@ struct StockPriceChartView: View {
         return lower < upper ? lower...upper : nil
     }
 
+    private var xDomain: ClosedRange<Date>? {
+        guard let first = filtered.first?.date,
+              let last = filtered.last?.date,
+              first < last else { return nil }
+        return first...last
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 14) {
@@ -71,7 +75,8 @@ struct StockPriceChartView: View {
             }
             .font(.caption2)
 
-            ZStack {
+            GeometryReader { geometry in
+                ZStack {
                 Chart {
                     // Main line
                     ForEach(filtered) { p in
@@ -114,16 +119,16 @@ struct StockPriceChartView: View {
 
                     if let referenceHigh {
                         RuleMark(y: .value("52WH", referenceHigh))
-                            .foregroundStyle(.secondary.opacity(0.45))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                            .annotation(position: .topLeading) {
-                                Text("52WH")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.ultraThinMaterial)
-                                    .cornerRadius(4)
+                            .foregroundStyle(referenceHighColor.opacity(0.6))
+                            .lineStyle(StrokeStyle(lineWidth: 2.4, dash: [5, 4]))
+                            .annotation(position: .topLeading, alignment: .leading) {
+                                HStack(spacing: 4) {
+                                    Text("52WH")
+                                    wholeDollarText(referenceHigh)
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .offset(x: 2, y: -2)
                             }
                     }
 
@@ -147,6 +152,7 @@ struct StockPriceChartView: View {
                         }
                     }
                 }
+                .chartXScale(domain: xDomain ?? Date.distantPast...Date.distantFuture)
                 .chartYScale(domain: yDomain ?? 0...1)
                 .chartPlotStyle { plotArea in
                     plotArea
@@ -191,7 +197,7 @@ struct StockPriceChartView: View {
                     DragGesture()
                         .onChanged { value in
                             isDragging = true
-                            if let date = approximateDate(atX: value.location.x),
+                            if let date = approximateDate(atX: value.location.x, width: geometry.size.width),
                                let nearest = nearestPoint(to: date) {
                                 dragLocation = nearest
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -202,13 +208,15 @@ struct StockPriceChartView: View {
                             dragLocation = nil
                         }
                 )
+                }
             }
         }
     }
 
-    private func approximateDate(atX x: CGFloat) -> Date? {
+    private func approximateDate(atX x: CGFloat, width: CGFloat) -> Date? {
         guard !filtered.isEmpty else { return nil }
-        let idx = Int((x / UIScreen.main.bounds.width) * CGFloat(filtered.count))
+        guard width > 0 else { return filtered.first?.date }
+        let idx = Int((x / width) * CGFloat(filtered.count))
         return filtered.indices.contains(idx) ? filtered[idx].date : nil
     }
 

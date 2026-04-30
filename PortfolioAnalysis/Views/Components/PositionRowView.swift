@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PositionRowView: View {
     let result: PortfolioAnalysisResult
+    let dayChange: Double
 
     private var currencyCode: String {
         Locale.current.currency?.identifier ?? "USD"
@@ -20,8 +21,12 @@ struct PositionRowView: View {
         return isLargeLoss || isBelowHighByMoreThan10
     }
 
+    private var dayChangeColor: Color {
+        dayChange < 0 ? .red : (dayChange > 0 ? .green : .secondary)
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(result.symbol)
                     .font(.subheadline)
@@ -29,18 +34,18 @@ struct PositionRowView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Qty: \(formattedQuantity(result.quantity))")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                        Text("Cost: \(result.costBasis, format: .currency(code: currencyCode))")
+                    Text("Cost: \(result.costBasis, format: .currency(code: currencyCode))")
                         .font(.caption2)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .layoutPriority(1)
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -48,6 +53,12 @@ struct PositionRowView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(result.totalValue, format: .currency(code: currencyCode))
                     .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text("Day: \(dayChange, format: .currency(code: currencyCode))")
+                    .font(.caption2)
+                    .foregroundColor(dayChangeColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -95,9 +106,9 @@ struct PositionRowView: View {
 struct PositionRowView_Previews: PreviewProvider {
     static var previews: some View {
         List {
-            PositionRowView(result: sampleResult)
-            PositionRowView(result: sampleResultLoss)
-            PositionRowView(result: sampleResultBelowHigh)
+            PositionRowView(result: sampleResult, dayChange: 42.15)
+            PositionRowView(result: sampleResultLoss, dayChange: -128.40)
+            PositionRowView(result: sampleResultBelowHigh, dayChange: 0)
         }
         .listStyle(.plain)
         .previewLayout(.sizeThatFits)

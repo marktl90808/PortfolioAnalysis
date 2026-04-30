@@ -162,6 +162,34 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         runAnalysis()
     }
 
+    func updateHolding(
+        oldSymbol: String,
+        newSymbol: String,
+        quantity: Double,
+        costBasis: Double?
+    ) async {
+        guard let index = positions.firstIndex(where: { $0.symbol == oldSymbol }) else { return }
+
+        positions[index].symbol = newSymbol
+        positions[index].quantity = quantity
+        positions[index].value = positions[index].price * quantity
+
+        if let costBasis {
+            positions[index].costBasis = costBasis
+        }
+
+        priceHistory.removeValue(forKey: oldSymbol)
+
+        await diskStore.save(positions)
+
+        let history = await fetchHistorySafe(for: newSymbol)
+        if !history.isEmpty {
+            priceHistory[newSymbol] = history
+        }
+
+        runAnalysis()
+    }
+
     // MARK: - Add / Remove
 
     func addPosition(_ pos: ImportedPosition) {

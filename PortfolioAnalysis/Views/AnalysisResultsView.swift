@@ -17,14 +17,16 @@ struct AnalysisResultsView: View {
             // MARK: - Results List
             List {
                 ForEach(viewModel.analysisResults) { result in
+                    let dayChange = dayChange(for: result)
+
                     if viewModel.priceHistory[result.symbol] != nil {
                         NavigationLink {
                             StockDetailView(initialSymbol: result.symbol, viewModel: viewModel)
                         } label: {
-                            PositionRowView(result: result)
+                            PositionRowView(result: result, dayChange: dayChange)
                         }
                     } else {
-                        PositionRowView(result: result)
+                        PositionRowView(result: result, dayChange: dayChange)
                     }
                 }
             }
@@ -56,7 +58,25 @@ struct AnalysisResultsView: View {
                         .reduce(0, +),
                      format: .currency(code: "USD"))
             }
+
+            HStack {
+                Text("Day Change:")
+                Spacer()
+                Text(viewModel.dayChangeTotal,
+                     format: .currency(code: "USD"))
+                    .foregroundColor(viewModel.dayChangeTotal < 0 ? .red : .green)
+            }
         }
         .padding(.horizontal)
+    }
+
+    private func dayChange(for result: PortfolioAnalysisResult) -> Double {
+        guard !result.isCash,
+              let history = viewModel.priceHistory[result.symbol],
+              history.count >= 2 else { return 0 }
+
+        let latest = history[history.count - 1].close
+        let previous = history[history.count - 2].close
+        return (latest - previous) * result.quantity
     }
 }
