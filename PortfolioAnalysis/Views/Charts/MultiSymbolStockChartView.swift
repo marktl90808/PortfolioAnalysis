@@ -1,132 +1,178 @@
 //
-//  SymbolSeries.swift
+//  MultiSymbolStockChartView.swift
 //  PortfolioAnalysis
 //
-//  Created by Mark Leonard on 4/28/2026.
-//
-import Foundation
+
 import SwiftUI
 import Charts
 
-struct SymbolSeries: Identifiable {
-    let id = UUID()
-    let symbol: String
-    let history: [PricePoint]
-    let color: Color
-}
-
 struct MultiSymbolStockChartView: View {
-    let series: [SymbolSeries]
-    let range: TimeRange
+    let symbols: [String]
+    let histories: [String: [PricePoint]]
+    let mode: CompareMode   // Performance | Price
 
     @State private var dragDate: Date?
-    @State private var isDragging = false
+    @State private var dragX: CGFloat = 0
 
-    private var filteredSeries: [(symbol: String, points: [PricePoint])] {
-        series.compactMap { s in
-            let sorted = s.history.sorted { $0.date < $1.date }
-            guard !sorted.isEmpty else { return nil }
-            let now = sorted.last!.date
-            let start = range.dateWindow(from: now)
-            let filtered = sorted.filter { $0.date >= start }
-            guard filtered.count > 1 else { return nil }
-            return (s.symbol, filtered)
-        }
+    private let palette: [Color] = [
+        .blue, .green, .orange, .purple, .red
+    ]
+
+    private func color(for symbol: String) -> Color {
+        guard let idx = symbols.firstIndex(of: symbol) else { return .gray }
+        return palette[idx % palette.count]
     }
 
-    private func normalized(_ points: [PricePoint]) -> [PricePoint] {
-        guard let first = points.first?.close else { return points }
-        return points.map { p in
-            let pct = (p.close - first) / first * 100
-            return PricePoint(date: p.date, close: pct)
+    private var alignedData: [String: [PricePoint]] {
+        var result: [String: [PricePoint]] = [:]
+        for symbol in symbols {
+            let sorted = (histories[symbol] ?? []).sorted { $0.date < $1.date }
+            result[symbol] = sorted
         }
+        return result
     }
 
-    private let palette: [Color] = [.blue, .green, .orange, .purple, .pink, .teal, .red]
+    private var performanceData: [String: [(date: Date, pct: Double)]] {
+        var dict: [String: [(Date, Double)]] = [:]
+
+        for symbol in symbols {
+            guard let series = alignedData[symbol], let first = series.first else { continue }
+            let base = first.close
+            dict[symbol] = series.map { ($0.date, (($0.close - base) / base) * 100.0) }
+        }
+        return dict
+    }
+
+    private var priceData: [String: [(date: Date, price: Double)]] {
+        var dict: [String: [(Date, Double)]] = [:]
+        for symbol in symbols {
+            guard let series = alignedData[symbol] else { continue }
+            dict[symbol] = series.map { ($0.date, $0.close) }
+        }
+        return dict
+    }
+
+    private var xDomain: ClosedRange<Date>? {
+        let allDates = alignedData.values.flatMap { $0.map(\.date) }
+        guard let minD = allDates.min(), let maxD = allDates.max(), minD < maxD else { return nil }
+        return minD...maxD
+    }
+
+    private var yDomain: ClosedRange<Double>? {
+        switch mode {
+        case .performance:
+            let all = performanceData.values.flatMap { $0.map(\.pct) }
+            guard let minV = all.min(), let maxV = all.max(), minV < maxV else { return nil }
+            return minV...maxV
+
+        case .price:
+            let all = priceData.values.flatMap { $0.map(\.price) }
+            guard let minV = all.min(), let maxV = all.max(), minV < maxV else { return nil }
+            return minV...maxV
+        }
+    }
 
     var body: some View {
-        ZStack {
-            Chart {
-                ForEach(Array(filteredSeries.enumerated()), id: \.element.symbol) { index, entry in
-                    let color = series.first(where: { $0.symbol == entry.symbol })?.color ?? palette[index % palette.count]
-                    let norm = normalized(entry.points)
+        GeometryReader { geo in
+            ZStack {
+                Chart {
+                    switch mode {
 
-                    ForEach(norm) { p in
-                        LineMark(
-                            x: .value("Date", p.date),
-                            y: .value("%", p.close)
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(color)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                    }
+                    // PERFORMANCE MODE
+                    case .performance:
+                        ForEach(symbols, id: \.self) { symbol in
+                            if let series = performanceData[symbol] {
+                                ForEach(series, id: \.date) { point in
+                                    LineMark(
+                                        x: .value("Date", point.date),
+                                        y: .value("Pct", point.pct)
+                                    )
+                                    .interpolationMethod(.catmullRom)
+                                    .foregroundStyle(color(for: symbol))
+                                    .lineStyle(StrokeStyle(lineWidth: 2))
+                                }
 
-                    if let dragDate,
-                       let nearest = nearestPoint(in: norm, to: dragDate) {
-                        RuleMark(x: .value("Drag", dragDate))
-                            .foregroundStyle(.gray.opacity(0.3))
-
-                        PointMark(
-                            x: .value("Drag", nearest.date),
-                            y: .value("%", nearest.close)
-                        )
-                        .foregroundStyle(.white)
-                        .symbolSize(40)
-                        .annotation(position: .top) {
-                            VStack(spacing: 2) {
-                                Text(entry.symbol)
-                                    .font(.caption2.bold())
-                                Text(String(format: "%.2f%%", nearest.close))
-                                    .font(.caption2)
+                                // Right-edge label
+                                if let last = series.last {
+                                    PointMark(
+                                        x: .value("Date", last.date),
+                                        y: .value("Pct", last.pct)
+                                    )
+                                    .annotation(position: .trailing) {
+                                        Text("\(last.pct, specifier: "%.1f")%")
+                                            .font(.caption2.bold())
+                                            .foregroundColor(color(for: symbol))
+                                    }
+                                }
                             }
-                            .padding(6)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(6)
+                        }
+
+                    // PRICE MODE
+                    case .price:
+                        ForEach(symbols, id: \.self) { symbol in
+                            if let series = priceData[symbol] {
+                                ForEach(series, id: \.date) { point in
+                                    LineMark(
+                                        x: .value("Date", point.date),
+                                        y: .value("Price", point.price)
+                                    )
+                                    .interpolationMethod(.catmullRom)
+                                    .foregroundStyle(color(for: symbol))
+                                    .lineStyle(StrokeStyle(lineWidth: 2))
+                                }
+
+                                // Right-edge label
+                                if let last = series.last {
+                                    PointMark(
+                                        x: .value("Date", last.date),
+                                        y: .value("Price", last.price)
+                                    )
+                                    .annotation(position: .trailing) {
+                                        Text(last.price, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
+                                            .font(.caption2.bold())
+                                            .foregroundColor(color(for: symbol))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks(position: .leading) {
-                    AxisGridLine()
+                .chartXScale(domain: xDomain ?? Date.distantPast...Date.distantFuture)
+                .chartYScale(domain: yDomain ?? 0...1)
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5))
                 }
-            }
-            .padding(.vertical, 8)
-            .chartOverlay { proxy in
-                GeometryReader { geo in
+                .chartYAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5))
+                }
+                .padding(.vertical, 8)
+
+                // Touch inspector
+                if let date = dragDate {
                     Rectangle()
-                        .fill(.clear)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    isDragging = true
-                                    if let date = approximateDate(atX: value.location.x, width: geo.size.width) {
-                                        dragDate = date
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
-                                }
-                                .onEnded { _ in
-                                    isDragging = false
-                                    dragDate = nil
-                                }
-                        )
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: 1)
+                        .position(x: dragX, y: geo.size.height / 2)
                 }
             }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragX = value.location.x
+                        dragDate = approximateDate(atX: value.location.x, width: geo.size.width)
+                    }
+                    .onEnded { _ in
+                        dragDate = nil
+                    }
+            )
         }
     }
 
     private func approximateDate(atX x: CGFloat, width: CGFloat) -> Date? {
-        guard let firstSeries = filteredSeries.first?.points else { return nil }
-        guard width > 0 else { return nil }
-        let idx = Int((x / width) * CGFloat(firstSeries.count))
-        return firstSeries.indices.contains(idx) ? firstSeries[idx].date : nil
-    }
-
-    private func nearestPoint(in points: [PricePoint], to date: Date) -> PricePoint? {
-        points.min(by: {
-            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
-        })
+        guard let domain = xDomain else { return nil }
+        let ratio = max(0, min(1, x / width))
+        let interval = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        return domain.lowerBound.addingTimeInterval(interval * ratio)
     }
 }
+// MARK: End of MultiSymbolStockChartView.swift

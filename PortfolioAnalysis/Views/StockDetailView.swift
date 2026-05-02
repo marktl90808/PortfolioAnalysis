@@ -8,27 +8,27 @@ import SwiftUI
 struct StockDetailView: View {
     let initialSymbol: String
     @ObservedObject var viewModel: PortfolioAnalysisViewModel
+    let orderedResultsOverride: [PortfolioAnalysisResult]?
 
     @State private var selectedSymbol: String
 
-    init(initialSymbol: String, viewModel: PortfolioAnalysisViewModel) {
+    init(
+        initialSymbol: String,
+        viewModel: PortfolioAnalysisViewModel,
+        orderedResults: [PortfolioAnalysisResult]? = nil
+    ) {
         self.initialSymbol = initialSymbol
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        self.orderedResultsOverride = orderedResults
         self._selectedSymbol = State(initialValue: initialSymbol)
     }
 
     private var orderedResults: [PortfolioAnalysisResult] {
-        viewModel.analysisResults
+        orderedResultsOverride ?? viewModel.analysisResults
     }
 
     private var selectedIndex: Int? {
         orderedResults.firstIndex(where: { $0.symbol == selectedSymbol })
-    }
-
-    private var pageIndicatorText: String? {
-        guard orderedResults.count > 1 else { return nil }
-        let page = (selectedIndex ?? 0) + 1
-        return "\(page) of \(orderedResults.count)"
     }
 
     var body: some View {
@@ -53,12 +53,10 @@ struct StockDetailView: View {
                     if selectedIndex == nil {
                         selectedSymbol = initialSymbol
                     }
-                    if selectedIndex == nil, let first = orderedResults.first {
-                        selectedSymbol = first.symbol
-                    }
                 }
                 .onChange(of: orderedResults.map(\.symbol)) { _, newSymbols in
-                    if !newSymbols.contains(selectedSymbol), let first = orderedResults.first {
+                    if !newSymbols.contains(selectedSymbol),
+                       let first = orderedResults.first {
                         selectedSymbol = first.symbol
                     }
                 }
@@ -101,20 +99,25 @@ private struct StockDetailPage: View {
         highImpactPerShare * result.quantity
     }
 
-    private var nearHighThreshold: Double { 100 }
-
     private var isNearHigh: Bool {
-        abs(highImpactTotal) < nearHighThreshold
+        abs(highImpactTotal) < 100
     }
 
     private var chartTrendColor: Color {
         let sorted = history.sorted { $0.date < $1.date }
         let start = range.dateWindow(from: sorted.last?.date ?? Date())
         let filtered = sorted.filter { $0.date >= start }
-        guard let first = filtered.first?.close, let last = filtered.last?.close else { return .secondary }
+        guard let first = filtered.first?.close,
+              let last = filtered.last?.close else { return .secondary }
         if last > first { return .green }
         if last < first { return .red }
         return .secondary
+    }
+
+    private var dayChange: Double? {
+        let sorted = history.sorted { $0.date < $1.date }
+        guard sorted.count >= 2 else { return nil }
+        return sorted.last!.close - sorted[sorted.count - 2].close
     }
 
     private var pageIndicatorText: String? {
@@ -124,154 +127,14 @@ private struct StockDetailPage: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                VStack(spacing: 4) {
-                    Text(result.symbol)
-                        .font(.largeTitle.bold())
 
-                    Text(holdingDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text(result.currentPrice, format: .currency(code: currencyCode))
-                        .font(.title2)
-                        .foregroundColor(.primary)
-
-                    if !result.isCash {
-                        compact52WHSummary
-                    }
-
-                    if let pageIndicatorText {
-                        Text(pageIndicatorText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.top, 8)
-
-                Button {
-                    showingEditSheet = true
-                } label: {
-                    Label("Edit Position", systemImage: "pencil")
-                }
-                .buttonStyle(.bordered)
-                .disabled(editablePosition == nil)
-
+                headerSection
                 timeRangeSelector
-
-                StockPriceChartView(
-                    history: history,
-                    range: range,
-                    showMA20: showMA20,
-                    showMA200: showMA200,
-                    referenceHigh: result.yearHighPrice,
-                    referenceHighColor: chartTrendColor
-                )
-                .frame(height: 260)
-                .padding(.horizontal, 8)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("52WH Impact")
-                        .font(.headline)
-
-                    HStack {
-                        Text("Per share:")
-                        Spacer()
-                        Text(highImpactPerShare, format: .currency(code: currencyCode))
-                            .foregroundColor(highImpactPerShare < 0 ? .red : .green)
-                    }
-
-                    HStack {
-                        Text("Qty × impact:")
-                        Spacer()
-                        Text(highImpactTotal, format: .currency(code: currencyCode))
-                            .foregroundColor(highImpactTotal < 0 ? .red : .green)
-                    }
-
-                    Text(isNearHigh ? "Near High price... enjoy." : impactMessage)
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-
-                    if !isNearHigh {
-                        Text("No noteworthy news to report.")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal)
-
-                if !result.isCash {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Trend / Velocity")
-                            .font(.headline)
-
-                        HStack {
-                            Text("5D:")
-                            Spacer()
-                            Text(slopeText(result.shortTermSlope))
-                                .foregroundColor(slopeColor(result.shortTermSlope))
-                        }
-
-                        HStack {
-                            Text("20D:")
-                            Spacer()
-                            Text(slopeText(result.mediumTermSlope))
-                                .foregroundColor(slopeColor(result.mediumTermSlope))
-                        }
-
-                        HStack {
-                            Text("60D:")
-                            Spacer()
-                            Text(slopeText(result.longTermSlope))
-                                .foregroundColor(slopeColor(result.longTermSlope))
-                        }
-
-                        HStack {
-                            Text("Direction:")
-                            Spacer()
-                            Text(directionChangeLabel(result.directionChange))
-                                .foregroundColor(directionColor(result.directionChange))
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-
-                HStack(spacing: 20) {
-                    Toggle("MA20", isOn: $showMA20)
-                    Toggle("MA200", isOn: $showMA200)
-                }
-                .padding(.horizontal)
-                .toggleStyle(.switch)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Position Details")
-                        .font(.headline)
-
-                    HStack {
-                        Text("Shares:")
-                        Spacer()
-                        Text(result.quantity, format: .number.precision(.fractionLength(3)))
-                    }
-
-                    HStack {
-                        Text("Cost Basis:")
-                        Spacer()
-                        Text(result.costBasis, format: .currency(code: currencyCode))
-                    }
-
-                    HStack {
-                        Text("Current Value:")
-                        Spacer()
-                        Text(result.totalValue, format: .currency(code: currencyCode))
-                    }
-
-                    HStack {
-                        Text("52WH:")
-                        Spacer()
-                        Text(result.yearHighPrice, format: .currency(code: currencyCode))
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
+                chartSection
+                impactSection
+                trendSection
+                movingAveragesSection
+                positionDetailsSection
             }
         }
         .navigationTitle(result.symbol)
@@ -285,6 +148,169 @@ private struct StockDetailPage: View {
         }
         .developerLabel("StockDetailView")
     }
+
+    // MARK: - Sections
+
+    private var headerSection: some View {
+        VStack(spacing: 4) {
+            Text(result.symbol)
+                .font(.largeTitle.bold())
+
+            Text(holdingDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.currentPrice, format: .currency(code: currencyCode))
+                        .font(.title2)
+
+                    if let dayChange {
+                        HStack(spacing: 4) {
+                            Text("Day:")
+                                .font(.caption)
+                            Text(dayChange, format: .currency(code: currencyCode))
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundColor(dayChange < 0 ? .red : (dayChange > 0 ? .green : .secondary))
+                    }
+                }
+
+                if !result.isCash {
+                    compact52WHSummary
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+
+            if let pageIndicatorText {
+                Text(pageIndicatorText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var chartSection: some View {
+        StockPriceChartView(
+            history: history,
+            range: range,
+            showMA20: showMA20,
+            showMA200: showMA200,
+            referenceHigh: result.yearHighPrice,
+            referenceHighColor: chartTrendColor,
+            quantity: result.quantity   // ← FIX: pass quantity here
+        )
+        .frame(height: 260)
+        .padding(.horizontal, 8)
+    }
+
+    private var impactSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("52WH Impact")
+                .font(.headline)
+
+            HStack {
+                Text("Per share:")
+                Spacer()
+                Text(highImpactPerShare, format: .currency(code: currencyCode))
+                    .foregroundColor(highImpactPerShare < 0 ? .red : .green)
+            }
+
+            HStack {
+                Text("Qty × impact:")
+                Spacer()
+                Text(highImpactTotal, format: .currency(code: currencyCode))
+                    .foregroundColor(highImpactTotal < 0 ? .red : .green)
+            }
+
+            Text(isNearHigh ? "Near High price... enjoy." : impactMessage)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
+            if !isNearHigh {
+                Text("No noteworthy news to report.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var trendSection: some View {
+        Group {
+            if !result.isCash {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Trend / Velocity")
+                        .font(.headline)
+
+                    trendRow("5D:", slope: result.shortTermSlope)
+                    trendRow("20D:", slope: result.mediumTermSlope)
+                    trendRow("60D:", slope: result.longTermSlope)
+
+                    HStack {
+                        Text("Direction:")
+                        Spacer()
+                        Text(directionChangeLabel(result.directionChange))
+                            .foregroundColor(directionColor(result.directionChange))
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private var movingAveragesSection: some View {
+        HStack(spacing: 20) {
+            Toggle("MA20", isOn: $showMA20)
+            Toggle("MA200", isOn: $showMA200)
+        }
+        .padding(.horizontal)
+        .toggleStyle(.switch)
+    }
+
+    private var positionDetailsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Position Details")
+                .font(.headline)
+
+            // Shares row is now the edit trigger
+            HStack {
+                Text("Shares:")
+                Spacer()
+                Text(result.quantity, format: .number.precision(.fractionLength(3)))
+                    .foregroundColor(.blue)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if editablePosition != nil {
+                    showingEditSheet = true
+                }
+            }
+
+            HStack {
+                Text("Cost Basis:")
+                Spacer()
+                Text(result.costBasis, format: .currency(code: currencyCode))
+            }
+
+            HStack {
+                Text("Current Value:")
+                Spacer()
+                Text(result.totalValue, format: .currency(code: currencyCode))
+            }
+
+            HStack {
+                Text("52WH:")
+                Spacer()
+                Text(result.yearHighPrice, format: .currency(code: currencyCode))
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 20)
+    }
+
+    // MARK: - Helpers
 
     private var impactMessage: String {
         if highImpactTotal < 0 {
@@ -300,6 +326,15 @@ private struct StockDetailPage: View {
         value.formatted(.currency(code: currencyCode))
     }
 
+    private func trendRow(_ label: String, slope: Double) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(slopeText(slope))
+                .foregroundColor(slopeColor(slope))
+        }
+    }
+
     private func slopeText(_ value: Double) -> String {
         value.formatted(.currency(code: currencyCode))
     }
@@ -310,25 +345,21 @@ private struct StockDetailPage: View {
 
     private func directionChangeLabel(_ direction: TrendDirectionChange) -> String {
         switch direction {
-        case .none:
-            return "none"
-        case .turningUp:
-            return "turning up"
-        case .turningDown:
-            return "turning down"
+        case .none: return "none"
+        case .turningUp: return "turning up"
+        case .turningDown: return "turning down"
         }
     }
 
     private func directionColor(_ direction: TrendDirectionChange) -> Color {
         switch direction {
-        case .none:
-            return .secondary
-        case .turningUp:
-            return .green
-        case .turningDown:
-            return .red
+        case .none: return .secondary
+        case .turningUp: return .green
+        case .turningDown: return .red
         }
     }
+
+    // MARK: - Time Range Selector
 
     private var timeRangeSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -346,11 +377,12 @@ private struct StockDetailPage: View {
             }
             .padding(.horizontal, 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Compact 52WH Summary
+
     private var compact52WHSummary: some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .trailing, spacing: 4) {
             summaryItem(
                 title: "52WH",
                 value: String(format: "%.2f%%", result.percentDifferenceFromYearHigh),
@@ -373,7 +405,7 @@ private struct StockDetailPage: View {
     }
 
     private func summaryItem(title: String, value: String, valueColor: Color) -> some View {
-        VStack(spacing: 2) {
+        HStack(spacing: 6) {
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -382,6 +414,7 @@ private struct StockDetailPage: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(valueColor)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
+// MARK: End of StockDetailView.swift

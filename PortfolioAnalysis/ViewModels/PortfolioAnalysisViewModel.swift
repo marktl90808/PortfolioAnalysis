@@ -16,12 +16,13 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     @Published var analysisResults: [PortfolioAnalysisResult] = []
     @Published var priceHistory: [String: [PricePoint]] = [:]
     @Published var isLoading: Bool = false
+    @Published var loadingMessage: String? = nil
     @Published var slopeMethod: SlopeMethod = .simpleDelta
 
     // MARK: - Services
 
     private let diskStore = DiskPortfolioStore.shared
-    private let marketData = DefaultMarketDataService()
+    private let marketData: MarketDataService = DualSourceMarketDataService()
 
     // MARK: - Legacy Key (for migration)
 
@@ -31,6 +32,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
 
     func startupLoad() async {
         isLoading = true
+        loadingMessage = "Refreshing data… Please wait"
 
         await migrateIfNeeded()
 
@@ -40,8 +42,11 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         await loadAllPriceHistory()
         runAnalysis()
 
+        loadingMessage = nil
         isLoading = false
     }
+
+    // MARK: - Totals
 
     var cashTotal: Double {
         positions.filter(\.isCash).reduce(0) { $0 + $1.value }
@@ -112,7 +117,11 @@ final class PortfolioAnalysisViewModel: ObservableObject {
                 return PortfolioAnalysisResult.noData(position: pos)
             }
 
-            return PortfolioAnalysisResult.from(position: pos, history: history, slopeMethod: slopeMethod)
+            return PortfolioAnalysisResult.from(
+                position: pos,
+                history: history,
+                slopeMethod: slopeMethod
+            )
         }
     }
 
@@ -122,9 +131,15 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         analysisResults = []
 
         Task {
+            loadingMessage = "Refreshing data… Please wait"
+            isLoading = true
+
             await diskStore.save(imported)
             await loadAllPriceHistory()
             runAnalysis()
+
+            loadingMessage = nil
+            isLoading = false
         }
     }
 
