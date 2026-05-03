@@ -148,12 +148,12 @@ struct MultiSymbolStockChartView: View {
                 .padding(.vertical, 8)
 
                 // Touch inspector
-                if let date = dragDate {
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.35))
-                        .frame(width: 1)
-                        .position(x: dragX, y: geo.size.height / 2)
-                }
+                if dragDate != nil {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.35))
+                            .frame(width: 1)
+                            .offset(x: dragX)
+                    }
             }
             .gesture(
                 DragGesture()

@@ -26,8 +26,8 @@ struct PositionRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(result.symbol)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -50,7 +50,7 @@ struct PositionRowView: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: 0) {
                 Text(result.totalValue, format: .currency(code: currencyCode))
                     .font(.subheadline)
                     .lineLimit(1)

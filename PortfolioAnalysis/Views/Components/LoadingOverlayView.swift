@@ -69,7 +69,7 @@ struct LoadingOverlayView: View {
         .cornerRadius(12)
         .onAppear { startTimer() }
         .onDisappear { stopTimer() }
-        .onChange(of: countdownStart) { _ in
+        .onChange(of: countdownStart) {
             startTimer()
         }
     }

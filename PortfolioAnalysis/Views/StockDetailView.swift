@@ -133,7 +133,7 @@ private struct StockDetailPage: View {
                 chartSection
                 impactSection
                 trendSection
-                movingAveragesSection
+//                movingAveragesSection
                 positionDetailsSection
             }
         }
@@ -224,15 +224,15 @@ private struct StockDetailPage: View {
                     .foregroundColor(highImpactTotal < 0 ? .red : .green)
             }
 
-            Text(isNearHigh ? "Near High price... enjoy." : impactMessage)
-                .font(.footnote)
-                .foregroundColor(.secondary)
+//            Text(isNearHigh ? "Near High price... enjoy." : impactMessage)
+//                .font(.footnote)
+//                .foregroundColor(.secondary)
 
-            if !isNearHigh {
-                Text("No noteworthy news to report.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
+//            if !isNearHigh {
+//                Text("No noteworthy news to report.")
+//                    .font(.footnote)
+//                    .foregroundColor(.secondary)
+//            }
         }
         .padding(.horizontal)
     }
@@ -260,14 +260,14 @@ private struct StockDetailPage: View {
         }
     }
 
-    private var movingAveragesSection: some View {
-        HStack(spacing: 20) {
-            Toggle("MA20", isOn: $showMA20)
-            Toggle("MA200", isOn: $showMA200)
-        }
-        .padding(.horizontal)
-        .toggleStyle(.switch)
-    }
+//    private var movingAveragesSection: some View {
+//        HStack(spacing: 20) {
+//            Toggle("MA20", isOn: $showMA20)
+//            Toggle("MA200", isOn: $showMA200)
+//        }
+//        .padding(.horizontal)
+//        .toggleStyle(.switch)
+//    }
 
     private var positionDetailsSection: some View {
         VStack(alignment: .leading, spacing: 8) {

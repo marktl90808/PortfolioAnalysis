@@ -151,7 +151,7 @@ struct AnalysisResultsView: View {
     // MARK: - Totals Section
 
     private var totalsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
 
             Text("Portfolio Summary")
                 .font(.headline)
@@ -207,5 +207,71 @@ struct AnalysisResultsView: View {
         return (latest - previous) * result.quantity
     }
 }
+
+#if DEBUG
+struct AnalysisResultsView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            AnalysisResultsView(viewModel: sampleViewModel)
+        }
+    }
+
+    @MainActor
+    private static var sampleViewModel: PortfolioAnalysisViewModel {
+        let viewModel = PortfolioAnalysisViewModel()
+
+        viewModel.positions = [
+            ImportedPosition(
+                id: UUID(),
+                symbol: "AAPL",
+                name: "Apple Inc.",
+                quantity: 101.15,
+                price: 405.45,
+                value: 41_020.05,
+                costBasis: 26.29
+            ),
+            ImportedPosition(
+                id: UUID(),
+                symbol: "MSFT",
+                name: "Microsoft Corp.",
+                quantity: 42.0,
+                price: 420.12,
+                value: 17_644.99,
+                costBasis: 310.55
+            ),
+            ImportedPosition(
+                id: UUID(),
+                symbol: "CASH",
+                name: "Cash",
+                quantity: 1.0,
+                price: 12_345.67,
+                value: 12_345.67,
+                costBasis: nil
+            )
+        ]
+
+        viewModel.priceHistory = [
+            "AAPL": sampleHistory(start: 392.10, step: 3.25),
+            "MSFT": sampleHistory(start: 408.20, step: 2.10)
+        ]
+
+        viewModel.runAnalysis()
+        return viewModel
+    }
+
+    private static func sampleHistory(start: Double, step: Double) -> [PricePoint] {
+        let calendar = Calendar.current
+        let today = Date()
+
+        return (0..<8).map { index in
+            let offsetDate = calendar.date(byAdding: .day, value: -7 + index, to: today) ?? today
+            return PricePoint(
+                date: offsetDate,
+                close: start + (Double(index) * step)
+            )
+        }
+    }
+}
+#endif
 // MARK: End of AnalysisResultsView.swift
 
