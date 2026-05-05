@@ -49,35 +49,13 @@ struct AnalysisResultsView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
 
-            // Header row with title + Sort text link
-            HStack {
-                Text("Analysis Results")
-                    .font(.title2.bold())
+            // Header row removed — no more duplicate title
+            // Sort menu moved into toolbar instead
 
-                Spacer()
-
-                Menu {
-                    Picker("Sort Mode", selection: $sortMode) {
-                        ForEach(ResultsSortMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                } label: {
-                    Text("Sort")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.blue)
-                        .underline()
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            // Totals Section
             totalsSection
 
-            // Results List
             List {
                 ForEach(sortedResults) { result in
                     let dayChange = dayChange(for: result)
@@ -97,9 +75,28 @@ struct AnalysisResultsView: View {
                     }
                 }
             }
+            .listStyle(.plain)
+            .listRowInsets(EdgeInsets())
+            .padding(.horizontal, -16)
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Analysis Results")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Picker("Sort Mode", selection: $sortMode) {
+                        ForEach(ResultsSortMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.headline)
+                }
+            }
+        }
     }
+
 
     // MARK: - Sorting Logic
 

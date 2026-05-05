@@ -161,6 +161,10 @@ private struct StockDetailPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            // ⭐ Classification Badge
+            ClassificationBadgeView(classification: result.classification)
+                .padding(.top, 4)
+
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(result.currentPrice, format: .currency(code: currencyCode))
@@ -455,3 +459,5 @@ private struct StockDetailPage: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
+// End of StockDetailView.swift
+

@@ -37,3 +37,4 @@ extension ImportedPosition {
             || (price == 1.0 && costBasis == nil)
     }
 }
+// End of "ImportedPosition.swift"

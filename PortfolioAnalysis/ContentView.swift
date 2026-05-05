@@ -234,10 +234,10 @@ struct PortfolioListView: View {
                             VStack(alignment: .leading) {
                                 Text(result.symbol)
                                     .font(.headline)
-                                Text(trendLabel(for: result))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+
+                                ClassificationBadgeView(classification: result.classification)
                             }
+
                             Spacer()
                             Text(result.currentPrice, format: .currency(code: currencyCode))
                         }
