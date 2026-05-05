@@ -99,16 +99,16 @@ private struct StockDetailPage: View {
         highImpactPerShare * result.quantity
     }
 
-    private var isNearHigh: Bool {
-        abs(highImpactTotal) < 100
-    }
-
     private var chartTrendColor: Color {
         let sorted = history.sorted { $0.date < $1.date }
         let start = range.dateWindow(from: sorted.last?.date ?? Date())
         let filtered = sorted.filter { $0.date >= start }
+
         guard let first = filtered.first?.close,
-              let last = filtered.last?.close else { return .secondary }
+              let last = filtered.last?.close else {
+            return .secondary
+        }
+
         if last > first { return .green }
         if last < first { return .red }
         return .secondary
@@ -131,10 +131,11 @@ private struct StockDetailPage: View {
                 headerSection
                 timeRangeSelector
                 chartSection
+
+                // NEW ORDER:
+                positionDetailsSection
                 impactSection
                 trendSection
-//                movingAveragesSection
-                positionDetailsSection
             }
         }
         .navigationTitle(result.symbol)
@@ -149,7 +150,7 @@ private struct StockDetailPage: View {
         .developerLabel("StockDetailView")
     }
 
-    // MARK: - Sections
+    // MARK: - Header
 
     private var headerSection: some View {
         VStack(spacing: 4) {
@@ -191,19 +192,114 @@ private struct StockDetailPage: View {
         .padding(.top, 8)
     }
 
+    // MARK: - Chart
+
     private var chartSection: some View {
-        StockPriceChartView(
-            history: history,
-            range: range,
-            showMA20: showMA20,
-            showMA200: showMA200,
-            referenceHigh: result.yearHighPrice,
-            referenceHighColor: chartTrendColor,
-            quantity: result.quantity   // ← FIX: pass quantity here
-        )
-        .frame(height: 260)
-        .padding(.horizontal, 8)
+        VStack(spacing: 8) {
+
+            StockPriceChartView(
+                history: history,
+                range: range,
+                showMA20: showMA20,
+                showMA200: showMA200,
+                referenceHigh: result.yearHighPrice,
+                referenceHighColor: chartTrendColor,
+                quantity: result.quantity,
+                costBasis: result.costBasis
+            )
+            .frame(height: 260)
+            .padding(.horizontal, 8)
+
+            if let perf = sincePurchasePerformance {
+                VStack(spacing: 4) {
+                    Text("Since Purchase")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 6) {
+                        Text(perf.percent, format: .percent.precision(.fractionLength(2)))
+                            .font(.headline)
+                            .foregroundColor(perf.percent >= 0 ? .green : .red)
+
+                        Text(perf.dollars, format: .currency(code: currencyCode))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(perf.dollars >= 0 ? .green : .red)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .transition(.opacity)
+            }
+        }
     }
+
+    // MARK: - Position Details (now ABOVE Impact + Trend)
+
+    private var positionDetailsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Position Details")
+                .font(.headline)
+
+            // Shares
+            HStack {
+                Text("Shares:")
+                Spacer()
+                Text(result.quantity, format: .number.precision(.fractionLength(3)))
+                    .foregroundColor(.blue)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if editablePosition != nil {
+                    showingEditSheet = true
+                }
+            }
+
+            // Cost row (unit cost × qty = total)
+            HStack {
+                Text("Cost:")
+                Spacer()
+
+                let totalCost = result.costBasis
+                let qty = result.quantity
+                let unitCost = qty > 0 ? totalCost / qty : 0
+
+                Text("\(unitCost.formatted(.currency(code: currencyCode))) × \(qty.formatted(.number.precision(.fractionLength(3)))) = \(totalCost.formatted(.currency(code: currencyCode)))")
+                    .multilineTextAlignment(.trailing)
+            }
+
+            // Gain / Loss row
+            HStack {
+                Text("Gain / Loss:")
+                Spacer()
+
+                let totalCost = result.costBasis
+                let currentValue = result.totalValue
+                let gainLoss = currentValue - totalCost
+                let gainLossPercent = totalCost > 0 ? gainLoss / totalCost : 0
+
+                Text("\(gainLoss.formatted(.currency(code: currencyCode)))  (\(gainLossPercent.formatted(.percent.precision(.fractionLength(2)))))")
+                    .foregroundColor(gainLoss >= 0 ? .green : .red)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            // Current Value
+            HStack {
+                Text("Current Value:")
+                Spacer()
+                Text(result.totalValue, format: .currency(code: currencyCode))
+            }
+
+            // 52WH
+            HStack {
+                Text("52WH:")
+                Spacer()
+                Text(result.yearHighPrice, format: .currency(code: currencyCode))
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: - 52WH Impact (now BELOW Position Details)
 
     private var impactSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -223,19 +319,11 @@ private struct StockDetailPage: View {
                 Text(highImpactTotal, format: .currency(code: currencyCode))
                     .foregroundColor(highImpactTotal < 0 ? .red : .green)
             }
-
-//            Text(isNearHigh ? "Near High price... enjoy." : impactMessage)
-//                .font(.footnote)
-//                .foregroundColor(.secondary)
-
-//            if !isNearHigh {
-//                Text("No noteworthy news to report.")
-//                    .font(.footnote)
-//                    .foregroundColor(.secondary)
-//            }
         }
         .padding(.horizontal)
     }
+
+    // MARK: - Trend / Velocity (now BELOW Impact)
 
     private var trendSection: some View {
         Group {
@@ -256,74 +344,24 @@ private struct StockDetailPage: View {
                     }
                 }
                 .padding(.horizontal)
+                .padding(.bottom, 20)
             }
         }
-    }
-
-//    private var movingAveragesSection: some View {
-//        HStack(spacing: 20) {
-//            Toggle("MA20", isOn: $showMA20)
-//            Toggle("MA200", isOn: $showMA200)
-//        }
-//        .padding(.horizontal)
-//        .toggleStyle(.switch)
-//    }
-
-    private var positionDetailsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Position Details")
-                .font(.headline)
-
-            // Shares row is now the edit trigger
-            HStack {
-                Text("Shares:")
-                Spacer()
-                Text(result.quantity, format: .number.precision(.fractionLength(3)))
-                    .foregroundColor(.blue)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if editablePosition != nil {
-                    showingEditSheet = true
-                }
-            }
-
-            HStack {
-                Text("Cost Basis:")
-                Spacer()
-                Text(result.costBasis, format: .currency(code: currencyCode))
-            }
-
-            HStack {
-                Text("Current Value:")
-                Spacer()
-                Text(result.totalValue, format: .currency(code: currencyCode))
-            }
-
-            HStack {
-                Text("52WH:")
-                Spacer()
-                Text(result.yearHighPrice, format: .currency(code: currencyCode))
-            }
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 20)
     }
 
     // MARK: - Helpers
 
-    private var impactMessage: String {
-        if highImpactTotal < 0 {
-            return "Below 52WH by \(formattedCurrency(highImpactTotal)) across your shares."
-        } else if highImpactTotal > 0 {
-            return "Above 52WH by \(formattedCurrency(highImpactTotal)) across your shares."
-        } else {
-            return "At the 52WH level."
-        }
-    }
+    private var sincePurchasePerformance: (percent: Double, dollars: Double)? {
+        guard range == .sincePurchase else { return nil }
+        guard result.costBasis > 0 else { return nil }
 
-    private func formattedCurrency(_ value: Double) -> String {
-        value.formatted(.currency(code: currencyCode))
+        let cost = result.costBasis
+        let current = result.currentPrice
+
+        let percent = (current - cost) / cost
+        let dollars = (current - cost) * result.quantity
+
+        return (percent, dollars)
     }
 
     private func trendRow(_ label: String, slope: Double) -> some View {
@@ -391,13 +429,13 @@ private struct StockDetailPage: View {
 
             summaryItem(
                 title: "/sh",
-                value: formattedCurrency(highImpactPerShare),
+                value: (highImpactPerShare).formatted(.currency(code: currencyCode)),
                 valueColor: highImpactPerShare < 0 ? .red : .green
             )
 
             summaryItem(
                 title: "Total",
-                value: formattedCurrency(highImpactTotal),
+                value: highImpactTotal.formatted(.currency(code: currencyCode)),
                 valueColor: highImpactTotal < 0 ? .red : .green
             )
         }
@@ -417,4 +455,3 @@ private struct StockDetailPage: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
-// MARK: End of StockDetailView.swift

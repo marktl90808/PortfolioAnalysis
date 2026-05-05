@@ -13,27 +13,85 @@ struct StockPriceChartView: View {
     let showMA200: Bool
     let referenceHigh: Double?
     let referenceHighColor: Color
-    let quantity: Double   // ← NEW
+    let quantity: Double
+    let costBasis: Double?
 
     @State private var dragLocation: PricePoint?
     @State private var isDragging = false
     @State private var dragX: CGFloat = 0
+    @State private var blink = false
 
     private var currencyCode: String {
         Locale.current.currency?.identifier ?? "USD"
     }
 
-    private func wholeDollarText(_ value: Double) -> Text {
-        Text(value, format: .currency(code: currencyCode).precision(.fractionLength(0)))
-    }
+    // MARK: - Filtered history
 
     private var filtered: [PricePoint] {
         guard !history.isEmpty else { return [] }
         let sorted = history.sorted { $0.date < $1.date }
+
+        if range == .sincePurchase {
+            return sorted
+        }
+
         let now = sorted.last!.date
         let start = range.dateWindow(from: now)
         return sorted.filter { $0.date >= start }
     }
+
+    // MARK: - Domains (Corrected)
+
+    private var yDomain: ClosedRange<Double>? {
+        guard !filtered.isEmpty else { return nil }
+
+        var values = filtered.map(\.close)
+
+        if let costBasis {
+            values.append(costBasis)
+        }
+        if let referenceHigh {
+            values.append(referenceHigh)
+        }
+
+        guard var minPrice = values.min(),
+              var maxPrice = values.max(),
+              minPrice > 0 else {
+            let center = values.first ?? 0
+            let delta = max(center * 0.02, 1)
+            return (center - delta)...(center + delta)
+        }
+
+        // --- TOP AXIS ---
+        if let referenceHigh {
+            maxPrice = referenceHigh * 1.01   // 1% above 52WH
+        } else {
+            maxPrice = maxPrice * 1.02
+        }
+
+        // --- BOTTOM AXIS ---
+        if let costBasis {
+            minPrice = min(minPrice, costBasis)
+        }
+        minPrice = minPrice * 0.95   // 5% below lowest
+
+        if minPrice >= maxPrice {
+            let center = minPrice
+            let delta = max(center * 0.02, 1)
+            return (center - delta)...(center + delta)
+        }
+
+        return minPrice...maxPrice
+    }
+
+    private var xDomain: ClosedRange<Date>? {
+        guard let first = filtered.first?.date,
+              let last = filtered.last?.date,
+              first < last else { return nil }
+        return first...last
+    }
+
+    // MARK: - Performance color
 
     private var performanceColor: Color {
         guard let first = filtered.first?.close,
@@ -42,6 +100,20 @@ struct StockPriceChartView: View {
         if last < first { return .red }
         return .gray
     }
+
+    // MARK: - Cost basis helpers
+
+    private var costBasisLineColor: Color {
+        guard let costBasis else { return .clear }
+        let lastPrice = filtered.last?.close ?? costBasis
+        return lastPrice >= costBasis ? .green : .red
+    }
+
+    private var costBasisOpacity: Double {
+        blink ? 0.95 : 0.35
+    }
+
+    // MARK: - Moving averages
 
     private func movingAverage(_ window: Int) -> [PricePoint] {
         guard filtered.count >= window else { return [] }
@@ -54,22 +126,7 @@ struct StockPriceChartView: View {
         return result
     }
 
-    private var yDomain: ClosedRange<Double>? {
-        let closes = filtered.map(\.close)
-        guard let minPrice = closes.min(), let maxPrice = closes.max() else { return nil }
-
-        let anchorHigh = referenceHigh.map { max($0, maxPrice) } ?? maxPrice
-        let upper = max(maxPrice, anchorHigh * 1.05)
-        let lower = min(minPrice, anchorHigh * 0.95)
-        return lower < upper ? lower...upper : nil
-    }
-
-    private var xDomain: ClosedRange<Date>? {
-        guard let first = filtered.first?.date,
-              let last = filtered.last?.date,
-              first < last else { return nil }
-        return first...last
-    }
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 10) {
@@ -86,9 +143,8 @@ struct StockPriceChartView: View {
             GeometryReader { geo in
                 ZStack {
 
-                    // MARK: - Chart
                     Chart {
-                        // Main line
+                        // PRICE
                         ForEach(filtered) { p in
                             LineMark(
                                 x: .value("Date", p.date),
@@ -127,7 +183,26 @@ struct StockPriceChartView: View {
                             }
                         }
 
-                        // 52WH line
+                        // COST BASIS
+                        if let costBasis {
+                            RuleMark(y: .value("Cost Basis", costBasis))
+                                .foregroundStyle(costBasisLineColor.opacity(costBasisOpacity))
+                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                .annotation(position: .topLeading, alignment: .leading) {
+                                    HStack(spacing: 4) {
+                                        Text("Cost")
+                                        Text(costBasis, format: .currency(code: currencyCode))
+                                    }
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(4)
+                                    .background(.thinMaterial)
+                                    .cornerRadius(4)
+                                    .offset(x: 2, y: -2)
+                                }
+                        }
+
+                        // 52WH
                         if let referenceHigh {
                             RuleMark(y: .value("52WH", referenceHigh))
                                 .foregroundStyle(referenceHighColor.opacity(0.6))
@@ -135,7 +210,7 @@ struct StockPriceChartView: View {
                                 .annotation(position: .topLeading, alignment: .leading) {
                                     HStack(spacing: 4) {
                                         Text("52WH")
-                                        wholeDollarText(referenceHigh)
+                                        Text(referenceHigh, format: .currency(code: currencyCode))
                                     }
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -147,7 +222,7 @@ struct StockPriceChartView: View {
                     .chartYScale(domain: yDomain ?? 0...1)
                     .padding(.vertical, 8)
 
-                    // MARK: - Touch Inspector Overlay
+                    // Touch inspector
                     if let drag = dragLocation {
                         let value = drag.close * quantity
 
@@ -166,11 +241,10 @@ struct StockPriceChartView: View {
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .shadow(radius: 2)
-                        .frame(maxWidth: .infinity, alignment: .trailing)   // ← RIGHT ALIGNED
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, 8)
                         .padding(.top, 4)
 
-                        // Vertical crosshair
                         Rectangle()
                             .fill(Color.secondary.opacity(0.35))
                             .frame(width: 1)
@@ -195,7 +269,14 @@ struct StockPriceChartView: View {
                 )
             }
         }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                blink = true
+            }
+        }
     }
+
+    // MARK: - Touch helpers
 
     private func approximateDate(atX x: CGFloat, width: CGFloat) -> Date? {
         guard !filtered.isEmpty else { return nil }
@@ -208,6 +289,8 @@ struct StockPriceChartView: View {
         filtered.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
     }
 
+    // MARK: - Legend
+
     private func legendItem(color: Color, title: String) -> some View {
         HStack(spacing: 4) {
             Circle()
@@ -218,5 +301,3 @@ struct StockPriceChartView: View {
         }
     }
 }
-
-// MARK: End of StockPriceChartView.swift

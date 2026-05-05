@@ -106,6 +106,30 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             return []
         }
     }
+    // MARK: - Refresh Market Data
+
+    func refreshMarketData() async {
+        isLoading = true
+        loadingMessage = "Refreshing market data…"
+
+        // Reload price history for all non-cash positions
+        priceHistory = [:]
+
+        for pos in positions where !pos.isCash {
+            do {
+                let history = try await marketData.fetchPrices(for: pos.symbol)
+                priceHistory[pos.symbol] = history
+            } catch {
+                print("⚠️ Failed to refresh history for \(pos.symbol): \(error)")
+            }
+        }
+
+        // Re-run analysis with updated prices
+        runAnalysis()
+
+        loadingMessage = nil
+        isLoading = false
+    }
 
     // MARK: - Analysis
 

@@ -274,4 +274,3 @@ struct AnalysisResultsView_Previews: PreviewProvider {
 }
 #endif
 // MARK: End of AnalysisResultsView.swift
-

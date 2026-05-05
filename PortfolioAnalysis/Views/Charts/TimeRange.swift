@@ -2,14 +2,6 @@
 //  TimeRange.swift
 //  PortfolioAnalysis
 //
-//  Created by Mark Leonard on 4/28/2026.
-//
-//
-//  TimeRange.swift
-//  PortfolioAnalysis
-//
-//  Created by Mark Leonard on 4/28/2026.
-//
 
 import Foundation
 
@@ -21,10 +13,10 @@ enum TimeRange: String, CaseIterable, Identifiable {
     case sixMonths = "6M"
     case oneYear = "1Y"
     case ytd = "YTD"
+    case sincePurchase = "Since Purchase"
 
     var id: String { rawValue }
 
-    // Existing function you already had
     func dateWindow(from now: Date = Date()) -> Date {
         let cal = Calendar.current
         switch self {
@@ -42,11 +34,15 @@ enum TimeRange: String, CaseIterable, Identifiable {
             return cal.date(byAdding: .year, value: -1, to: now) ?? now
         case .ytd:
             return cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+
+        case .sincePurchase:
+            // We override this in StockDetailPage using full history,
+            // but we must return *something* to satisfy the switch.
+            return .distantPast
         }
     }
 }
 
-// MARK: - Extension for chart compatibility
 extension TimeRange {
     func toDateRange() -> ClosedRange<Date> {
         let now = Date()

@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var showingComparisonSheet = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 if viewModel.positions.isEmpty {
                     emptyStateView
@@ -35,23 +35,41 @@ struct ContentView: View {
             .navigationTitle("Portfolio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+
+                // Existing Import button
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Import Portfolio") {
                         showingImportSheet = true
                     }
                 }
+
+                // NEW: The Menu
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        NavigationLink("About This System") {
+                            AboutThisSystemView()
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .imageScale(.large)
+                    }
+                }
             }
+
             .sheet(isPresented: $showingImportSheet) {
                 PasteImportView(viewModel: viewModel)
+                    .developerLabel("PasteImportView")
             }
             .sheet(isPresented: $showingAnalysisSheet) {
                 NavigationStack {
                     AnalysisResultsView(viewModel: viewModel)
+                        .developerLabel("AnalysisResultsView")
                 }
             }
             .sheet(isPresented: $showingComparisonSheet) {
                 NavigationStack {
                     MultiSymbolComparisonView(viewModel: viewModel)
+                        .developerLabel("MultiSymbolComparisonView")
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: viewModel.isLoading)
@@ -59,6 +77,7 @@ struct ContentView: View {
                 await viewModel.startupLoad()
             }
         }
+        .developerLabel("ContentView")
     }
 
     private var emptyStateView: some View {
@@ -96,6 +115,7 @@ struct ContentView: View {
         .cornerRadius(16)
         .shadow(radius: 8)
         .padding(.horizontal, 24)
+        .developerLabel("EmptyStateView")
     }
 
     private var loadingOverlay: some View {
@@ -113,6 +133,7 @@ struct ContentView: View {
         .cornerRadius(12)
         .shadow(radius: 8)
         .padding(.horizontal, 40)
+        .developerLabel("LoadingOverlay")
     }
 }
 
@@ -145,19 +166,38 @@ struct PortfolioListView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            // Summary header
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Portfolio Value")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(viewModel.portfolioTotal, format: .currency(code: currencyCode))
-                        .font(.title2.bold())
+
+            // MARK: - Portfolio Header (Tap to Refresh)
+            VStack(alignment: .leading, spacing: 4) {
+
+                Text("Portfolio Value")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text(viewModel.portfolioTotal, format: .currency(code: currencyCode))
+                    .font(.title3.bold())   // iPhone 11 friendly
+
+                // Day Change + Percent Change UNDER the total
+                HStack(spacing: 6) {
+                    let change = viewModel.dayChangeTotal
+                    let percent = viewModel.portfolioTotal > 0
+                        ? change / (viewModel.portfolioTotal - change)
+                        : 0
+
+                    Text(change, format: .currency(code: currencyCode))
+                    Text(percent, format: .percent.precision(.fractionLength(2)))
                 }
-                Spacer()
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(viewModel.dayChangeTotal < 0 ? .red : .green)
             }
             .padding(.horizontal)
+            .contentShape(Rectangle()) // whole header tappable
+            .onTapGesture {
+                Task { await viewModel.refreshMarketData() }
+            }
+            // ❌ DeveloperLabel removed from PortfolioListView
 
+            // MARK: - Action Buttons
             VStack(spacing: 0) {
                 actionLink(
                     title: "View Analysis",
@@ -180,10 +220,16 @@ struct PortfolioListView: View {
             .background(Color.primary.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // Analysis results list
+            // MARK: - Positions List
             List {
                 ForEach(viewModel.analysisResults, id: \.symbol) { result in
-                    NavigationLink(destination: StockDetailView(initialSymbol: result.symbol, viewModel: viewModel)) {
+                    NavigationLink(
+                        destination: StockDetailView(
+                            initialSymbol: result.symbol,
+                            viewModel: viewModel
+                        )
+                        .developerLabel("StockDetailView")
+                    ) {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(result.symbol)
