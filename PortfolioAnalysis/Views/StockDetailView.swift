@@ -82,6 +82,27 @@ private struct StockDetailPage: View {
         viewModel.positions.first(where: { $0.symbol == result.symbol })
     }
 
+    // MARK: - CLEANED DESCRIPTION
+    private var cleanedDescription: String {
+        let raw = holdingDescription
+
+        // Remove line breaks
+        let noBreaks = raw
+            .replacingOccurrences(of: "\n", with: " - ")
+            .replacingOccurrences(of: "\r", with: " - ")
+
+        // Convert ALL CAPS → Title Case
+        if noBreaks == noBreaks.uppercased() {
+            return noBreaks
+                .lowercased()
+                .split(separator: " ")
+                .map { $0.capitalized }
+                .joined(separator: " ")
+        }
+
+        return noBreaks
+    }
+
     private var holdingDescription: String {
         let name = editablePosition?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? result.symbol : name
@@ -132,7 +153,6 @@ private struct StockDetailPage: View {
                 timeRangeSelector
                 chartSection
 
-                // NEW ORDER:
                 positionDetailsSection
                 impactSection
                 trendSection
@@ -150,18 +170,26 @@ private struct StockDetailPage: View {
         .developerLabel("StockDetailView")
     }
 
-    // MARK: - Header
+    // MARK: - CLEAN HEADER
 
     private var headerSection: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 12) {
+
+            // SYMBOL — shown once, centered
             Text(result.symbol)
-                .font(.largeTitle.bold())
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
 
-            Text(holdingDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // CLEANED DESCRIPTION — Title Case, no line breaks
+            Text(cleanedDescription)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
 
-            // ⭐ Classification Badge
             ClassificationBadgeView(classification: result.classification)
                 .padding(.top, 4)
 
@@ -186,6 +214,7 @@ private struct StockDetailPage: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
+            .padding(.horizontal)
 
             if let pageIndicatorText {
                 Text(pageIndicatorText)
@@ -196,7 +225,7 @@ private struct StockDetailPage: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Chart
+    // MARK: - CHART
 
     private var chartSection: some View {
         VStack(spacing: 8) {
@@ -209,7 +238,8 @@ private struct StockDetailPage: View {
                 referenceHigh: result.yearHighPrice,
                 referenceHighColor: chartTrendColor,
                 quantity: result.quantity,
-                costBasis: result.costBasis
+                costBasis: result.costBasis,
+                purchaseDate: editablePosition?.purchaseDate
             )
             .frame(height: 260)
             .padding(.horizontal, 8)
@@ -236,14 +266,13 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - Position Details (now ABOVE Impact + Trend)
+    // MARK: - POSITION DETAILS
 
     private var positionDetailsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Position Details")
                 .font(.headline)
 
-            // Shares
             HStack {
                 Text("Shares:")
                 Spacer()
@@ -257,7 +286,6 @@ private struct StockDetailPage: View {
                 }
             }
 
-            // Cost row (unit cost × qty = total)
             HStack {
                 Text("Cost:")
                 Spacer()
@@ -270,7 +298,6 @@ private struct StockDetailPage: View {
                     .multilineTextAlignment(.trailing)
             }
 
-            // Gain / Loss row
             HStack {
                 Text("Gain / Loss:")
                 Spacer()
@@ -285,14 +312,12 @@ private struct StockDetailPage: View {
                     .multilineTextAlignment(.trailing)
             }
 
-            // Current Value
             HStack {
                 Text("Current Value:")
                 Spacer()
                 Text(result.totalValue, format: .currency(code: currencyCode))
             }
 
-            // 52WH
             HStack {
                 Text("52WH:")
                 Spacer()
@@ -303,7 +328,7 @@ private struct StockDetailPage: View {
         .padding(.bottom, 10)
     }
 
-    // MARK: - 52WH Impact (now BELOW Position Details)
+    // MARK: - 52WH IMPACT
 
     private var impactSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -327,7 +352,7 @@ private struct StockDetailPage: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Trend / Velocity (now BELOW Impact)
+    // MARK: - TREND / VELOCITY
 
     private var trendSection: some View {
         Group {
@@ -353,7 +378,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - HELPERS
 
     private var sincePurchasePerformance: (percent: Double, dollars: Double)? {
         guard range == .sincePurchase else { return nil }
@@ -401,7 +426,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - Time Range Selector
+    // MARK: - TIME RANGE SELECTOR
 
     private var timeRangeSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -421,7 +446,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - Compact 52WH Summary
+    // MARK: - COMPACT 52WH SUMMARY
 
     private var compact52WHSummary: some View {
         VStack(alignment: .trailing, spacing: 4) {
@@ -459,5 +484,3 @@ private struct StockDetailPage: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
-// End of StockDetailView.swift
-

@@ -106,13 +106,13 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             return []
         }
     }
+
     // MARK: - Refresh Market Data
 
     func refreshMarketData() async {
         isLoading = true
         loadingMessage = "Refreshing market data…"
 
-        // Reload price history for all non-cash positions
         priceHistory = [:]
 
         for pos in positions where !pos.isCash {
@@ -124,7 +124,6 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             }
         }
 
-        // Re-run analysis with updated prices
         runAnalysis()
 
         loadingMessage = nil
@@ -201,12 +200,15 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         runAnalysis()
     }
 
+    // ⭐⭐⭐ FULLY UPDATED METHOD — purchaseDate now supported
     func updateHolding(
         oldSymbol: String,
         newSymbol: String,
         quantity: Double,
-        costBasis: Double?
+        costBasis: Double?,
+        purchaseDate: Date?
     ) async {
+
         guard let index = positions.firstIndex(where: { $0.symbol == oldSymbol }) else { return }
 
         positions[index].symbol = newSymbol
@@ -217,7 +219,15 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             positions[index].costBasis = costBasis
         }
 
-        priceHistory.removeValue(forKey: oldSymbol)
+        // ⭐ NEW: update purchase date
+        positions[index].purchaseDate = purchaseDate
+
+        // Migrate price history if symbol changed
+        if oldSymbol != newSymbol {
+            if let oldHistory = priceHistory.removeValue(forKey: oldSymbol) {
+                priceHistory[newSymbol] = oldHistory
+            }
+        }
 
         await diskStore.save(positions)
 

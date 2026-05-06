@@ -5,36 +5,52 @@
 
 import Foundation
 
-struct ImportedPosition: Identifiable, Codable {
-    let id: UUID            // ← no default value
+struct ImportedPosition: Identifiable, Codable, Sendable {
+    var id: UUID
 
     var symbol: String
-    let name: String
-
-    /// Quantity of shares (LPL-compatible)
+    var name: String
     var quantity: Double
-
-    /// Latest known price (from import)
     var price: Double
-
-    /// Total value (qty * price)
     var value: Double
-
-    /// Optional cost basis (LPL sometimes omits this)
     var costBasis: Double?
-}
 
-// MARK: - Cash Detection
-extension ImportedPosition {
-    var isCash: Bool {
-        let s = symbol.uppercased()
-        let n = name.uppercased()
+    // ⭐ NEW FIELD — optional purchase date
+    var purchaseDate: Date?
 
-        return s == "----"
-            || s == "CASH"
-            || n.contains("CASH")
-            || n.contains("MONEY MARKET")
-            || (price == 1.0 && costBasis == nil)
+    init(
+        id: UUID = UUID(),
+        symbol: String,
+        name: String,
+        quantity: Double,
+        price: Double,
+        value: Double,
+        costBasis: Double?,
+        purchaseDate: Date? = nil
+    ) {
+        self.id = id
+        self.symbol = symbol
+        self.name = name
+        self.quantity = quantity
+        self.price = price
+        self.value = value
+        self.costBasis = costBasis
+        self.purchaseDate = purchaseDate
     }
 }
+extension ImportedPosition {
+    var isCash: Bool {
+        // Cash-like detection
+        if symbol.uppercased().contains("CASH") { return true }
+        if name.uppercased().contains("CASH") { return true }
+
+        // If costBasis is nil AND quantity == 1 AND value == price → likely cash
+        if costBasis == nil && quantity == 1 && value == price {
+            return true
+        }
+
+        return false
+    }
+}
+
 // End of "ImportedPosition.swift"

@@ -9,16 +9,17 @@ import Charts
 struct StockPriceChartView: View {
     let history: [PricePoint]
     let range: TimeRange
-    let showMA20: Bool
-    let showMA200: Bool
-    let referenceHigh: Double?
+    let showMA20: Bool      // ignored
+    let showMA200: Bool     // ignored
+    let referenceHigh: Double?   // ignored for now
     let referenceHighColor: Color
-    let quantity: Double
+    let quantity: Double    // ignored
     let costBasis: Double?
+    let purchaseDate: Date? // ignored for now
 
     @State private var dragLocation: PricePoint?
-    @State private var isDragging = false
     @State private var dragX: CGFloat = 0
+    @State private var isDragging = false
     @State private var blink = false
 
     private var currencyCode: String {
@@ -40,49 +41,7 @@ struct StockPriceChartView: View {
         return sorted.filter { $0.date >= start }
     }
 
-    // MARK: - Domains (Corrected)
-
-    private var yDomain: ClosedRange<Double>? {
-        guard !filtered.isEmpty else { return nil }
-
-        var values = filtered.map(\.close)
-
-        if let costBasis {
-            values.append(costBasis)
-        }
-        if let referenceHigh {
-            values.append(referenceHigh)
-        }
-
-        guard var minPrice = values.min(),
-              var maxPrice = values.max(),
-              minPrice > 0 else {
-            let center = values.first ?? 0
-            let delta = max(center * 0.02, 1)
-            return (center - delta)...(center + delta)
-        }
-
-        // --- TOP AXIS ---
-        if let referenceHigh {
-            maxPrice = referenceHigh * 1.01   // 1% above 52WH
-        } else {
-            maxPrice = maxPrice * 1.02
-        }
-
-        // --- BOTTOM AXIS ---
-        if let costBasis {
-            minPrice = min(minPrice, costBasis)
-        }
-        minPrice = minPrice * 0.95   // 5% below lowest
-
-        if minPrice >= maxPrice {
-            let center = minPrice
-            let delta = max(center * 0.02, 1)
-            return (center - delta)...(center + delta)
-        }
-
-        return minPrice...maxPrice
-    }
+    // MARK: - Domains (prices only)
 
     private var xDomain: ClosedRange<Date>? {
         guard let first = filtered.first?.date,
@@ -91,51 +50,57 @@ struct StockPriceChartView: View {
         return first...last
     }
 
-    // MARK: - Performance color
+    private var yDomain: ClosedRange<Double>? {
+        let prices = filtered.map(\.close)
+        guard !prices.isEmpty else { return nil }
+
+        var minPrice = prices.min()!
+        var maxPrice = prices.max()!
+
+        // small padding
+        maxPrice *= 1.02
+        minPrice *= 0.98
+
+        if minPrice >= maxPrice {
+            let c = minPrice
+            let d = max(c * 0.02, 1)
+            return (c - d)...(c + d)
+        }
+
+        return minPrice...maxPrice
+    }
+
+    // MARK: - Improved performance color logic
 
     private var performanceColor: Color {
-        guard let first = filtered.first?.close,
-              let last = filtered.last?.close else { return .gray }
-        if last > first { return .green }
-        if last < first { return .red }
+        let closes = filtered.map(\.close)
+        guard closes.count >= 2 else { return .gray }
+
+        let first = closes.first!
+        let last = closes.last!
+        let pct = (last - first) / first
+
+        if pct > 0.0001 { return .green }
+        if pct < -0.0001 { return .red }
         return .gray
     }
 
-    // MARK: - Cost basis helpers
+    // MARK: - Cost basis color
 
-    private var costBasisLineColor: Color {
+    private var costBasisColor: Color {
         guard let costBasis else { return .clear }
-        let lastPrice = filtered.last?.close ?? costBasis
-        return lastPrice >= costBasis ? .green : .red
+        let last = filtered.last?.close ?? costBasis
+        return last >= costBasis ? .green : .red
     }
-
-    private var costBasisOpacity: Double {
-        blink ? 0.95 : 0.35
-    }
-
-    // MARK: - Moving averages
-
-    private func movingAverage(_ window: Int) -> [PricePoint] {
-        guard filtered.count >= window else { return [] }
-        var result: [PricePoint] = []
-        for i in window..<filtered.count {
-            let slice = filtered[(i-window)..<i]
-            let avg = slice.map { $0.close }.reduce(0, +) / Double(window)
-            result.append(PricePoint(date: filtered[i].date, close: avg))
-        }
-        return result
-    }
-
-    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 10) {
 
-            // Legend
             HStack(spacing: 14) {
                 legendItem(color: performanceColor, title: "Price")
-                if showMA20 { legendItem(color: .orange.opacity(0.85), title: "MA20") }
-                if showMA200 { legendItem(color: .blue.opacity(0.85), title: "MA200") }
+                if costBasis != nil {
+                    legendItem(color: costBasisColor, title: "Cost Basis")
+                }
                 Spacer()
             }
             .font(.caption2)
@@ -143,99 +108,55 @@ struct StockPriceChartView: View {
             GeometryReader { geo in
                 ZStack {
 
-                    Chart {
-                        // PRICE
-                        ForEach(filtered) { p in
-                            LineMark(
-                                x: .value("Date", p.date),
-                                y: .value("Price", p.close)
-                            )
-                            .interpolationMethod(.catmullRom)
-                            .foregroundStyle(performanceColor)
-                            .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        }
+                    if let xDomain, let yDomain {
 
-                        // MA20
-                        if showMA20 {
-                            let ma20 = movingAverage(20)
-                            ForEach(ma20) { p in
+                        Chart {
+
+                            // PRICE LINE
+                            ForEach(filtered) { p in
                                 LineMark(
                                     x: .value("Date", p.date),
-                                    y: .value("MA20", p.close)
+                                    y: .value("Price", p.close)
                                 )
                                 .interpolationMethod(.catmullRom)
-                                .foregroundStyle(.orange.opacity(0.8))
-                                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                .foregroundStyle(performanceColor)
+                                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                            }
+
+                            // COST BASIS OVERLAY (does NOT affect domain)
+                            if let costBasis {
+                                RuleMark(y: .value("Cost Basis", costBasis))
+                                    .foregroundStyle(costBasisColor.opacity(blink ? 0.95 : 0.35))
+                                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                    .annotation(position: .topLeading, alignment: .leading) {
+                                        HStack(spacing: 4) {
+                                            Text("Cost")
+                                            Text(costBasis, format: .currency(code: currencyCode))
+                                        }
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .padding(4)
+                                        .background(.thinMaterial)
+                                        .cornerRadius(4)
+                                        .offset(x: 2, y: -2)
+                                    }
                             }
                         }
+                        .chartXScale(domain: xDomain)
+                        .chartYScale(domain: yDomain)
+                        .padding(.vertical, 8)
 
-                        // MA200
-                        if showMA200 {
-                            let ma200 = movingAverage(200)
-                            ForEach(ma200) { p in
-                                LineMark(
-                                    x: .value("Date", p.date),
-                                    y: .value("MA200", p.close)
-                                )
-                                .interpolationMethod(.catmullRom)
-                                .foregroundStyle(.blue.opacity(0.8))
-                                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                            }
-                        }
-
-                        // COST BASIS
-                        if let costBasis {
-                            RuleMark(y: .value("Cost Basis", costBasis))
-                                .foregroundStyle(costBasisLineColor.opacity(costBasisOpacity))
-                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                                .annotation(position: .topLeading, alignment: .leading) {
-                                    HStack(spacing: 4) {
-                                        Text("Cost")
-                                        Text(costBasis, format: .currency(code: currencyCode))
-                                    }
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(4)
-                                    .background(.thinMaterial)
-                                    .cornerRadius(4)
-                                    .offset(x: 2, y: -2)
-                                }
-                        }
-
-                        // 52WH
-                        if let referenceHigh {
-                            RuleMark(y: .value("52WH", referenceHigh))
-                                .foregroundStyle(referenceHighColor.opacity(0.6))
-                                .lineStyle(StrokeStyle(lineWidth: 2.4, dash: [5, 4]))
-                                .annotation(position: .topLeading, alignment: .leading) {
-                                    HStack(spacing: 4) {
-                                        Text("52WH")
-                                        Text(referenceHigh, format: .currency(code: currencyCode))
-                                    }
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .offset(x: 2, y: -2)
-                                }
-                        }
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .chartXScale(domain: xDomain ?? Date.distantPast...Date.distantFuture)
-                    .chartYScale(domain: yDomain ?? 0...1)
-                    .padding(.vertical, 8)
 
-                    // Touch inspector
                     if let drag = dragLocation {
-                        let value = drag.close * quantity
-
                         VStack(alignment: .trailing, spacing: 4) {
                             Text(drag.close, format: .currency(code: currencyCode))
                                 .font(.caption.bold())
-
                             Text(drag.date, format: .dateTime.month().day().year())
                                 .font(.caption2)
-
-                            Text(value, format: .currency(code: currencyCode))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundColor(.secondary)
                         }
                         .padding(6)
                         .background(.ultraThinMaterial)
