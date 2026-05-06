@@ -107,6 +107,17 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Refresh
+
+    func refresh() async {
+        isLoading = true
+        loadingMessage = "Refreshing data… Please wait"
+        await loadAllPriceHistory()
+        runAnalysis()
+        loadingMessage = nil
+        isLoading = false
+    }
+
     // MARK: - Refresh Market Data
 
     func refreshMarketData() async {
@@ -282,5 +293,17 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         let latest = history[history.count - 1].close
         let previous = history[history.count - 2].close
         return (latest - previous) * position.quantity
+    }
+
+    // MARK: - Portfolio Day Change Summary
+
+    var portfolioDayChangeAmount: Double {
+        dayChangeTotal
+    }
+
+    var portfolioDayChangePercent: Double {
+        let total = portfolioTotal
+        guard total != 0 else { return 0 }
+        return dayChangeTotal / (total - dayChangeTotal)
     }
 }

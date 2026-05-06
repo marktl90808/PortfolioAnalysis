@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import Combine
+import Foundation
+import Charts
 
 struct StockDetailView: View {
     let initialSymbol: String
@@ -74,6 +77,7 @@ private struct StockDetailPage: View {
     let pageCount: Int
 
     @State private var range: TimeRange = .oneMonth
+    private var selectedRange: TimeRange { range }
     @State private var showMA20 = false
     @State private var showMA200 = false
     @State private var showingEditSheet = false
@@ -86,12 +90,10 @@ private struct StockDetailPage: View {
     private var cleanedDescription: String {
         let raw = holdingDescription
 
-        // Remove line breaks
         let noBreaks = raw
             .replacingOccurrences(of: "\n", with: " - ")
             .replacingOccurrences(of: "\r", with: " - ")
 
-        // Convert ALL CAPS → Title Case
         if noBreaks == noBreaks.uppercased() {
             return noBreaks
                 .lowercased()
@@ -135,6 +137,10 @@ private struct StockDetailPage: View {
         return .secondary
     }
 
+    private var referenceHighColor: Color {
+        result.currentPrice >= result.yearHighPrice ? .green : .secondary
+    }
+
     private var dayChange: Double? {
         let sorted = history.sorted { $0.date < $1.date }
         guard sorted.count >= 2 else { return nil }
@@ -145,6 +151,23 @@ private struct StockDetailPage: View {
         pageCount > 1 ? "\(pageIndex) of \(pageCount)" : nil
     }
 
+    // MARK: - ⭐ sincePurchasePerformance MOVED HERE (before chartSection)
+
+    private var sincePurchasePerformance: (percent: Double, dollars: Double)? {
+        guard range == .sincePurchase else { return nil }
+        guard result.costBasis > 0 else { return nil }
+
+        let cost = result.costBasis
+        let current = result.currentPrice
+
+        let percent = (current - cost) / cost
+        let dollars = (current - cost) * result.quantity
+
+        return (percent, dollars)
+    }
+
+    // MARK: - BODY
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -154,8 +177,8 @@ private struct StockDetailPage: View {
                 chartSection
 
                 positionDetailsSection
-                impactSection
-                trendSection
+                impactSection      // polished
+                trendSection       // polished
             }
         }
         .navigationTitle(result.symbol)
@@ -170,19 +193,17 @@ private struct StockDetailPage: View {
         .developerLabel("StockDetailView")
     }
 
-    // MARK: - CLEAN HEADER
+    // MARK: - HEADER (unchanged)
 
     private var headerSection: some View {
         VStack(spacing: 12) {
 
-            // SYMBOL — shown once, centered
             Text(result.symbol)
                 .font(.system(size: 34, weight: .semibold))
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
 
-            // CLEANED DESCRIPTION — Title Case, no line breaks
             Text(cleanedDescription)
                 .font(.body)
                 .foregroundColor(.secondary)
@@ -199,10 +220,14 @@ private struct StockDetailPage: View {
                         .font(.title2)
 
                     if let dayChange {
-                        HStack(spacing: 4) {
+                        let prevClose = history.sorted { $0.date < $1.date }[max(0, history.count - 2)].close
+                        let pct = prevClose != 0 ? dayChange / prevClose : 0
+                        HStack(spacing: 6) {
                             Text("Day:")
                                 .font(.caption)
                             Text(dayChange, format: .currency(code: currencyCode))
+                                .font(.caption.weight(.semibold))
+                            Text(pct, format: .percent.precision(.fractionLength(2)))
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundColor(dayChange < 0 ? .red : (dayChange > 0 ? .green : .secondary))
@@ -225,22 +250,24 @@ private struct StockDetailPage: View {
         .padding(.top, 8)
     }
 
-    // MARK: - CHART
+    // MARK: - CHART (unchanged except modified StockPriceChartView call)
 
     private var chartSection: some View {
         VStack(spacing: 8) {
 
             StockPriceChartView(
                 history: history,
-                range: range,
-                showMA20: showMA20,
-                showMA200: showMA200,
+                range: selectedRange,
+                showMA20: false,
+                showMA200: false,
                 referenceHigh: result.yearHighPrice,
-                referenceHighColor: chartTrendColor,
+                referenceHighColor: referenceHighColor,
                 quantity: result.quantity,
                 costBasis: result.costBasis,
-                purchaseDate: editablePosition?.purchaseDate
+                purchaseDate: editablePosition?.purchaseDate,
+                unitCost: (result.quantity > 0 ? result.costBasis / result.quantity : 0)
             )
+
             .frame(height: 260)
             .padding(.horizontal, 8)
 
@@ -266,7 +293,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - POSITION DETAILS
+    // MARK: - POSITION DETAILS (unchanged)
 
     private var positionDetailsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -328,49 +355,80 @@ private struct StockDetailPage: View {
         .padding(.bottom, 10)
     }
 
-    // MARK: - 52WH IMPACT
+    // MARK: - ⭐ POLISHED 52WH IMPACT
 
     private var impactSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("52WH Impact")
+        VStack(alignment: .leading, spacing: 12) {
+
+            Text("52‑Week High Impact")
                 .font(.headline)
+                .padding(.bottom, 4)
 
-            HStack {
-                Text("Per share:")
-                Spacer()
-                Text(highImpactPerShare, format: .currency(code: currencyCode))
-                    .foregroundColor(highImpactPerShare < 0 ? .red : .green)
-            }
+            VStack(spacing: 10) {
 
-            HStack {
-                Text("Qty × impact:")
-                Spacer()
-                Text(highImpactTotal, format: .currency(code: currencyCode))
-                    .foregroundColor(highImpactTotal < 0 ? .red : .green)
+                impactRow(
+                    label: "Per Share",
+                    value: highImpactPerShare,
+                    color: highImpactPerShare < 0 ? .red : .green
+                )
+
+                impactRow(
+                    label: "Total Impact",
+                    value: highImpactTotal,
+                    color: highImpactTotal < 0 ? .red : .green
+                )
             }
+            .padding()
+            .background(.thinMaterial)
+            .cornerRadius(12)
         }
         .padding(.horizontal)
     }
 
-    // MARK: - TREND / VELOCITY
+    private func impactRow(label: String, value: Double, color: Color) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+
+            Spacer()
+
+            Text(value.formatted(.currency(code: currencyCode)))
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(color)
+        }
+    }
+
+    // MARK: - ⭐ POLISHED TREND / VELOCITY
 
     private var trendSection: some View {
         Group {
             if !result.isCash {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
+
                     Text("Trend / Velocity")
                         .font(.headline)
+                        .padding(.bottom, 4)
 
-                    trendRow("5D:", slope: result.shortTermSlope)
-                    trendRow("20D:", slope: result.mediumTermSlope)
-                    trendRow("60D:", slope: result.longTermSlope)
+                    VStack(spacing: 10) {
 
-                    HStack {
-                        Text("Direction:")
-                        Spacer()
-                        Text(directionChangeLabel(result.directionChange))
-                            .foregroundColor(directionColor(result.directionChange))
+                        polishedTrendRow(label: "5D", value: result.shortTermSlope)
+                        polishedTrendRow(label: "20D", value: result.mediumTermSlope)
+                        polishedTrendRow(label: "60D", value: result.longTermSlope)
+
+                        Divider().padding(.vertical, 4)
+
+                        HStack {
+                            Text("Direction")
+                                .font(.subheadline)
+                            Spacer()
+                            Text(directionChangeLabel(result.directionChange))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(directionColor(result.directionChange))
+                        }
                     }
+                    .padding()
+                    .background(.thinMaterial)
+                    .cornerRadius(12)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 20)
@@ -378,27 +436,16 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - HELPERS
-
-    private var sincePurchasePerformance: (percent: Double, dollars: Double)? {
-        guard range == .sincePurchase else { return nil }
-        guard result.costBasis > 0 else { return nil }
-
-        let cost = result.costBasis
-        let current = result.currentPrice
-
-        let percent = (current - cost) / cost
-        let dollars = (current - cost) * result.quantity
-
-        return (percent, dollars)
-    }
-
-    private func trendRow(_ label: String, slope: Double) -> some View {
+    private func polishedTrendRow(label: String, value: Double) -> some View {
         HStack {
             Text(label)
+                .font(.subheadline)
+
             Spacer()
-            Text(slopeText(slope))
-                .foregroundColor(slopeColor(slope))
+
+            Text(slopeText(value))
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(slopeColor(value))
         }
     }
 
@@ -412,9 +459,9 @@ private struct StockDetailPage: View {
 
     private func directionChangeLabel(_ direction: TrendDirectionChange) -> String {
         switch direction {
-        case .none: return "none"
-        case .turningUp: return "turning up"
-        case .turningDown: return "turning down"
+        case .none: return "None"
+        case .turningUp: return "Turning Up"
+        case .turningDown: return "Turning Down"
         }
     }
 
@@ -426,7 +473,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - TIME RANGE SELECTOR
+    // MARK: - TIME RANGE SELECTOR (unchanged)
 
     private var timeRangeSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -446,7 +493,7 @@ private struct StockDetailPage: View {
         }
     }
 
-    // MARK: - COMPACT 52WH SUMMARY
+    // MARK: - COMPACT 52WH SUMMARY (unchanged)
 
     private var compact52WHSummary: some View {
         VStack(alignment: .trailing, spacing: 4) {
@@ -484,3 +531,4 @@ private struct StockDetailPage: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
+
