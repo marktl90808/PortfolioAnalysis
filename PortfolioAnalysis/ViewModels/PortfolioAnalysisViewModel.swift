@@ -28,6 +28,23 @@ final class PortfolioAnalysisViewModel: ObservableObject {
 
     private let legacyKey = "SavedPortfolioPositions"
 
+    // MARK: - Normalization Helpers
+
+    private func normalize(_ position: ImportedPosition) -> ImportedPosition {
+        var p = position
+        p.symbol = p.symbol
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        p.name = p.name
+            .smartTitleCase()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return p
+    }
+
+    private func normalizeAllPositions() {
+        positions = positions.map { normalize($0) }
+    }
+
     // MARK: - Startup
 
     func startupLoad() async {
@@ -37,7 +54,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         await migrateIfNeeded()
 
         let loaded = await diskStore.load()
-        positions = loaded
+        positions = loaded.map { normalize($0) }   // ⭐ normalize on load
 
         await loadAllPriceHistory()
         runAnalysis()
@@ -128,8 +145,11 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     func refresh() async {
         isLoading = true
         loadingMessage = "Refreshing data… Please wait"
+
+        normalizeAllPositions()          // ⭐ keep data clean
         await loadAllPriceHistory()
         runAnalysis()
+
         loadingMessage = nil
         isLoading = false
     }
@@ -140,6 +160,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         isLoading = true
         loadingMessage = "Refreshing market data…"
 
+        normalizeAllPositions()          // ⭐ normalize before using symbols
         priceHistory = [:]
 
         for pos in positions where !pos.isCash {
@@ -178,7 +199,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     // MARK: - Import
 
     func importPastedPositions(_ imported: [ImportedPosition]) {
-        positions = imported
+        positions = imported.map { normalize($0) }   // ⭐ normalize on import
         priceHistory = [:]
         analysisResults = []
 
@@ -186,7 +207,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             loadingMessage = "Refreshing data… Please wait"
             isLoading = true
 
-            await diskStore.save(imported)
+            await diskStore.save(positions)
             await loadAllPriceHistory()
             runAnalysis()
 
@@ -200,10 +221,14 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     func updateSymbol(for oldSymbol: String, newSymbol: String) {
         guard let index = positions.firstIndex(where: { $0.symbol == oldSymbol }) else { return }
 
-        positions[index].symbol = newSymbol
+        let normalizedNew = newSymbol
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        positions[index].symbol = normalizedNew
 
         if let oldHistory = priceHistory.removeValue(forKey: oldSymbol) {
-            priceHistory[newSymbol] = oldHistory
+            priceHistory[normalizedNew] = oldHistory
         }
 
         Task { await diskStore.save(positions) }
@@ -239,7 +264,11 @@ final class PortfolioAnalysisViewModel: ObservableObject {
 
         guard let index = positions.firstIndex(where: { $0.symbol == oldSymbol }) else { return }
 
-        positions[index].symbol = newSymbol
+        let normalizedNew = newSymbol
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        positions[index].symbol = normalizedNew
         positions[index].quantity = quantity
         positions[index].value = positions[index].price * quantity
 
@@ -249,17 +278,17 @@ final class PortfolioAnalysisViewModel: ObservableObject {
 
         positions[index].purchaseDate = purchaseDate
 
-        if oldSymbol != newSymbol {
+        if oldSymbol != normalizedNew {
             if let oldHistory = priceHistory.removeValue(forKey: oldSymbol) {
-                priceHistory[newSymbol] = oldHistory
+                priceHistory[normalizedNew] = oldHistory
             }
         }
 
         await diskStore.save(positions)
 
-        let history = await fetchHistorySafe(for: newSymbol)
+        let history = await fetchHistorySafe(for: normalizedNew)
         if !history.isEmpty {
-            priceHistory[newSymbol] = history
+            priceHistory[normalizedNew] = history
         }
 
         runAnalysis()
@@ -268,14 +297,14 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     // MARK: - Add / Remove
 
     func addPosition(_ pos: ImportedPosition) {
-        positions.append(pos)
+        positions.append(normalize(pos))          // ⭐ normalize on add
         Task { await diskStore.save(positions) }
         runAnalysis()
     }
 
     // ⭐ NEW — required by AddPositionView
     func addManualPosition(_ pos: ImportedPosition) {
-        positions.append(pos)
+        positions.append(normalize(pos))          // ⭐ normalize on manual add
         analysisResults = []
 
         Task {
@@ -334,5 +363,7 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         return dayChangeTotal / (total - dayChangeTotal)
     }
 }
+//End of PortfolioAnalysisViewModel.swift
+
 //End of PortfolioAnalysisViewModel.swift
 

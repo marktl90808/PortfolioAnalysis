@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct StockDetailView: View {
+    @ObservedObject var viewModel: PortfolioAnalysisViewModel
     let position: ImportedPosition
     let history: [PricePoint]
     let referenceHigh: Double?
@@ -15,6 +16,7 @@ struct StockDetailView: View {
     let showMA200: Bool
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showingEdit = false
 
     private var currencyCode: String {
         Locale.current.currency?.identifier ?? "USD"
@@ -54,10 +56,11 @@ struct StockDetailView: View {
                         .font(.largeTitle.bold())
 
                     if !position.name.isEmpty {
-                        Text(position.name)
+                        Text(position.name.smartTitleCase())
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
+
 
                     HStack(spacing: 12) {
                         Text(latestPrice, format: .currency(code: currencyCode))
@@ -94,17 +97,22 @@ struct StockDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 4)
 
-                    detailRow(
-                        label: "Quantity:",
-                        value: String(position.quantity)
-                    )
+                    // ⭐ Tappable quantity row
+                    Button {
+                        showingEdit = true
+                    } label: {
+                        detailRow(
+                            label: "Quantity:",
+                            value: String(position.quantity)
+                        )
+                    }
+                    .buttonStyle(.plain)
 
                     detailRow(
                         label: "Market Value:",
                         value: marketValue.formatted(.currency(code: currencyCode))
                     )
 
-                    // ⭐ Condensed Cost Line
                     if let unitCost = position.unitCost {
                         let totalCost = (position.costBasis ?? (unitCost * position.quantity))
 
@@ -131,6 +139,11 @@ struct StockDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+
+        // ⭐ Correct parameter order for EditPositionView
+        .sheet(isPresented: $showingEdit) {
+            EditPositionView(viewModel: viewModel, position: position)
+        }
     }
 
     // MARK: - Detail Row Helper
@@ -150,7 +163,6 @@ struct StockDetailView: View {
 
 //
 // MARK: - COMPATIBILITY INITIALIZER
-// Allows AnalysisResultsView to keep calling the old initializer
 //
 
 extension StockDetailView {
@@ -159,17 +171,14 @@ extension StockDetailView {
         viewModel: PortfolioAnalysisViewModel,
         orderedResults: [PortfolioAnalysisResult]
     ) {
-        // Find the matching ImportedPosition by symbol
         let position = viewModel.positions.first { $0.symbol == initialSymbol }
             ?? viewModel.positions.first!
 
-        // Use whatever price history we have for that symbol
         let history = viewModel.priceHistory[initialSymbol] ?? []
-
-        // Compute a reference high directly from history
         let referenceHigh = history.map(\.close).max()
 
         self.init(
+            viewModel: viewModel,
             position: position,
             history: history,
             referenceHigh: referenceHigh,

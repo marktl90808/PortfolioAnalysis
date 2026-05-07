@@ -252,3 +252,5 @@ struct StockPriceChartView: View {
         filtered.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
     }
 }
+// End of StockPriceChartView.swift
+

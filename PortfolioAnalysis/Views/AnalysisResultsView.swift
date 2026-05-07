@@ -5,164 +5,167 @@
 
 import SwiftUI
 
-enum ResultsSortMode: String, CaseIterable, Identifiable {
-    case gapAscending = "52WH: Low → High"
-    case gapDescending = "52WH: High → Low"
-    case alphaAZ = "Alphabetical A → Z"
-    case alphaZA = "Alphabetical Z → A"
-    case dayGrowthAscending = "Day Change: Low → High"
-    case dayGrowthDescending = "Day Change: High → Low"
-
-    var id: String { rawValue }
-}
-
 struct AnalysisResultsView: View {
     @ObservedObject var viewModel: PortfolioAnalysisViewModel
-    @State private var sortMode: ResultsSortMode = .gapAscending
 
-    private var cashTotal: Double {
-        viewModel.analysisResults
-            .filter { $0.isCash }
-            .map { $0.totalValue }
-            .reduce(0, +)
+    private var currencyCode: String {
+        Locale.current.currency?.identifier ?? "USD"
     }
 
-    private var investedTotal: Double {
-        viewModel.analysisResults
-            .filter { !$0.isCash }
-            .map { $0.totalValue }
-            .reduce(0, +)
-    }
-
-    private var portfolioTotal: Double {
-        cashTotal + investedTotal
-    }
-
-    private var totalGainLoss: Double {
-        viewModel.analysisResults
-            .map { $0.gainLoss }
-            .reduce(0, +)
+    // Helper: lookup the ImportedPosition for a symbol
+    private func positionName(for symbol: String) -> String {
+        viewModel.positions.first(where: { $0.symbol == symbol })?.name ?? ""
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        List {
 
-            totalsSection
+            // MARK: - Portfolio Summary
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Portfolio Summary")
+                        .font(.headline)
 
-            List {
-                ForEach(sortedResults) { result in
-                    let dayChange = dayChange(for: result)
+                    HStack {
+                        Text("Total Value:")
+                        Spacer()
+                        Text(viewModel.portfolioTotal, format: .currency(code: currencyCode))
+                            .font(.body.weight(.semibold))
+                    }
 
-                    if viewModel.priceHistory[result.symbol] != nil {
-                        NavigationLink {
-                            StockDetailView(
-                                initialSymbol: result.symbol,
-                                viewModel: viewModel,
-                                orderedResults: sortedResults
-                            )
-                        } label: {
-                            PositionRowView(result: result, dayChange: dayChange)
+                    HStack {
+                        Text("Cash:")
+                        Spacer()
+                        Text(viewModel.cashTotal, format: .currency(code: currencyCode))
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(.blue)
+                    }
+
+                    HStack {
+                        Text("Day Change:")
+                        Spacer()
+                        Text(viewModel.dayChangeTotal, format: .currency(code: currencyCode))
+                            .foregroundColor(viewModel.dayChangeTotal < 0 ? .red : .green)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            // MARK: - Analysis Results (Cash removed)
+            Section("Holdings") {
+                ForEach(
+                    viewModel.analysisResults.filter { !$0.isCash },
+                    id: \.symbol
+                ) { result in
+
+                    NavigationLink(
+                        destination: StockDetailView(
+                            initialSymbol: result.symbol,
+                            viewModel: viewModel,
+                            orderedResults: viewModel.analysisResults
+                        )
+                    ) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+
+                                // SYMBOL
+                                Text(result.symbol)
+                                    .font(.headline)
+
+                                // COMPANY NAME (smart title case)
+                                let name = positionName(for: result.symbol)
+                                if !name.isEmpty {
+                                    Text(name.smartTitleCase())
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                // CLASSIFICATION BADGE
+                                ClassificationBadgeView(classification: result.classification)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(result.currentPrice, format: .currency(code: currencyCode))
+                                    .font(.subheadline.weight(.semibold))
+
+                                Text(result.percentDifferenceFromYearHigh / 100,
+                                     format: .percent.precision(.fractionLength(2)))
+                                .foregroundColor(result.percentDifferenceFromYearHigh < 0 ? .red : .green)
+                                .font(.caption)
+                            }
                         }
-                    } else {
-                        PositionRowView(result: result, dayChange: dayChange)
+                        .padding(.vertical, 6)
                     }
                 }
             }
-            .listStyle(.plain)
-            .listRowInsets(EdgeInsets())
-            .padding(.horizontal, -16)
-            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Analysis Results")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Picker("Sort Mode", selection: $sortMode) {
-                        ForEach(ResultsSortMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.headline)
-                }
-            }
-        }
-    }
-
-    private var sortedResults: [PortfolioAnalysisResult] {
-        let nonCash = viewModel.analysisResults.filter { !$0.isCash }
-        let cash = viewModel.analysisResults.filter { $0.isCash }
-
-        let sortedNonCash: [PortfolioAnalysisResult]
-
-        switch sortMode {
-        case .gapAscending:
-            sortedNonCash = nonCash.sorted { $0.percentDifferenceFromYearHigh < $1.percentDifferenceFromYearHigh }
-        case .gapDescending:
-            sortedNonCash = nonCash.sorted { $0.percentDifferenceFromYearHigh > $1.percentDifferenceFromYearHigh }
-        case .alphaAZ:
-            sortedNonCash = nonCash.sorted { $0.symbol < $1.symbol }
-        case .alphaZA:
-            sortedNonCash = nonCash.sorted { $0.symbol > $1.symbol }
-        case .dayGrowthAscending:
-            sortedNonCash = nonCash.sorted { dayChange(for: $0) < dayChange(for: $1) }
-        case .dayGrowthDescending:
-            sortedNonCash = nonCash.sorted { dayChange(for: $0) > dayChange(for: $1) }
-        }
-
-        return sortedNonCash + cash
-    }
-
-    private var totalsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-
-            Text("Portfolio Summary")
-                .font(.headline)
-
-            HStack {
-                Text("Total Value:")
-                Spacer()
-                Text(portfolioTotal, format: .currency(code: "USD"))
-            }
-
-            HStack {
-                Text("Cash Total:")
-                Spacer()
-                Text(cashTotal, format: .currency(code: "USD"))
-            }
-
-            HStack {
-                Text("Invested:")
-                Spacer()
-                Text(investedTotal, format: .currency(code: "USD"))
-            }
-
-            HStack {
-                Text("Total Gain/Loss:")
-                Spacer()
-                Text(totalGainLoss, format: .currency(code: "USD"))
-            }
-
-            HStack {
-                Text("Day Change:")
-                Spacer()
-                Text(viewModel.dayChangeTotal, format: .currency(code: "USD"))
-                    .foregroundColor(viewModel.dayChangeTotal < 0 ? .red : .green)
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    private func dayChange(for result: PortfolioAnalysisResult) -> Double {
-        guard !result.isCash,
-              let history = viewModel.priceHistory[result.symbol],
-              history.count >= 2 else { return 0 }
-
-        let latest = history[history.count - 1].close
-        let previous = history[history.count - 2].close
-        return (latest - previous) * result.quantity
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
-// End of file
 
+//
+// MARK: - Smart Title Case Extension
+//
+
+extension String {
+    func smartTitleCase() -> String {
+        let acronyms: Set<String> = [
+            "ETF", "ETFS", "USA", "US", "S&P", "REIT", "AI", "EV", "ADR",
+            "LP", "LLC", "PLC", "NAV", "EPS", "PE", "P/E"
+        ]
+
+        let smallWords: Set<String> = [
+            "and", "or", "the", "a", "an", "of", "for", "in", "on", "to"
+        ]
+
+        let words = self
+            .split(separator: " ")
+            .map { String($0) }
+
+        var result: [String] = []
+
+        for (index, rawWord) in words.enumerated() {
+            let word = rawWord.trimmingCharacters(in: .whitespaces)
+            let upper = word.uppercased()
+            let lower = word.lowercased()
+
+            if acronyms.contains(upper) {
+                result.append(upper)
+                continue
+            }
+
+            if word == upper {
+                result.append(upper)
+                continue
+            }
+
+            if smallWords.contains(lower) && index != 0 {
+                result.append(lower)
+                continue
+            }
+
+            if word.contains("-") {
+                let parts = word.split(separator: "-").map { String($0) }
+                let fixed = parts.map { $0.smartTitleCase() }.joined(separator: "-")
+                result.append(fixed)
+                continue
+            }
+
+            if word.contains("/") {
+                let parts = word.split(separator: "/").map { String($0) }
+                let fixed = parts.map { $0.smartTitleCase() }.joined(separator: "/")
+                result.append(fixed)
+                continue
+            }
+
+            result.append(lower.capitalized)
+        }
+
+        return result.joined(separator: " ")
+    }
+}
+
+// End of file

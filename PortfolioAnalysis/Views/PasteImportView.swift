@@ -116,7 +116,7 @@ struct PasteImportView: View {
                 }
             }
         }
-        .developerLabel("PasteImportView")
+        .developerOverlay("PasteImportView")
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {

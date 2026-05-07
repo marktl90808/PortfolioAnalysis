@@ -34,6 +34,7 @@ struct ContentView: View {
                         .zIndex(10)
                 }
             }
+            
             .navigationTitle("Portfolio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

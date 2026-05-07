@@ -35,12 +35,12 @@ struct ImportedPosition: Identifiable, Codable, Sendable {
         price: Double,
         value: Double,
         costBasis: Double?,
-        unitCost: Double? = nil,
-        purchaseDate: Date? = nil
+        unitCost: Double?,
+        purchaseDate: Date?
     ) {
         self.id = id
-        self.symbol = symbol
-        self.name = name
+        self.symbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        self.name = name.smartTitleCase().trimmingCharacters(in: .whitespacesAndNewlines)
         self.quantity = quantity
         self.price = price
         self.value = value
@@ -48,6 +48,8 @@ struct ImportedPosition: Identifiable, Codable, Sendable {
         self.unitCost = unitCost
         self.purchaseDate = purchaseDate
     }
+
+
 }
 
 // MARK: - Cash Detection
@@ -129,8 +131,12 @@ extension ImportedPosition {
             }
 
             // Extract fields
-            let symbol = row["Symbol/CUSIP"]?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
-            let description = row["Description"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? symbol
+            let symbol = row["Symbol/CUSIP"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased() ?? ""
+            let description = (row["Description"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? symbol)
+                .smartTitleCase()
+
 
             let quantity = Double(row["Quantity"]?.cleanNumber() ?? "") ?? 0
             let marketPrice = Double(row["Price ($)"]?.cleanCurrency() ?? "") ?? 0
