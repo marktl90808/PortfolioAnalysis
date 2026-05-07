@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var showingImportSheet = false
     @State private var showingAnalysisSheet = false
     @State private var showingComparisonSheet = false
+    @State private var editMode: EditMode = .inactive
+    @State private var showingAddPosition = false
 
     var body: some View {
         NavigationStack {
@@ -36,14 +38,36 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 
-                // Existing Import button
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Import Portfolio") {
                         showingImportSheet = true
                     }
                 }
 
-                // NEW: The Menu
+                ToolbarItem(placement: .topBarTrailing) {
+                    Text("Refresh")
+                        .foregroundColor(.accentColor)
+                        .onTapGesture {
+                            Task { await viewModel.refreshMarketData() }
+                        }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Text("Add Symbol")
+                        .foregroundColor(.accentColor)
+                        .onTapGesture { showingAddPosition = true }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Text(editMode.isEditing ? "Done" : "Edit")
+                        .foregroundColor(.accentColor)
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                editMode = editMode.isEditing ? .inactive : .active
+                            }
+                        }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         NavigationLink("About This System") {
@@ -58,26 +82,26 @@ struct ContentView: View {
 
             .sheet(isPresented: $showingImportSheet) {
                 PasteImportView(viewModel: viewModel)
-                    .developerLabel("PasteImportView")
             }
             .sheet(isPresented: $showingAnalysisSheet) {
                 NavigationStack {
                     AnalysisResultsView(viewModel: viewModel)
-                        .developerLabel("AnalysisResultsView")
                 }
             }
             .sheet(isPresented: $showingComparisonSheet) {
                 NavigationStack {
                     MultiSymbolComparisonView(viewModel: viewModel)
-                        .developerLabel("MultiSymbolComparisonView")
                 }
+            }
+            .sheet(isPresented: $showingAddPosition) {
+                AddPositionView(viewModel: viewModel)
             }
             .animation(.easeInOut(duration: 0.18), value: viewModel.isLoading)
             .task {
                 await viewModel.startupLoad()
             }
+            .environment(\.editMode, $editMode)
         }
-        .developerLabel("ContentView")
     }
 
     private var emptyStateView: some View {
@@ -115,7 +139,6 @@ struct ContentView: View {
         .cornerRadius(16)
         .shadow(radius: 8)
         .padding(.horizontal, 24)
-        .developerLabel("EmptyStateView")
     }
 
     private var loadingOverlay: some View {
@@ -133,7 +156,6 @@ struct ContentView: View {
         .cornerRadius(12)
         .shadow(radius: 8)
         .padding(.horizontal, 40)
-        .developerLabel("LoadingOverlay")
     }
 }
 
@@ -147,7 +169,6 @@ struct PortfolioListView: View {
         Locale.current.currency?.identifier ?? "USD"
     }
 
-    // Explicit initializer to correctly set the @ObservedObject wrapper
     init(viewModel: PortfolioAnalysisViewModel) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onViewAnalysis = {}
@@ -167,17 +188,33 @@ struct PortfolioListView: View {
     var body: some View {
         VStack(spacing: 16) {
 
-            // MARK: - Portfolio Header (Tap to Refresh)
+            // MARK: - Portfolio Header with Cash (Option C)
             VStack(alignment: .leading, spacing: 4) {
 
-                Text("Portfolio Value")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Portfolio Value")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
 
-                Text(viewModel.portfolioTotal, format: .currency(code: currencyCode))
-                    .font(.title3.bold())   // iPhone 11 friendly
+                        Text(viewModel.portfolioTotal, format: .currency(code: currencyCode))
+                            .font(.title3.bold())
+                    }
 
-                // Day Change + Percent Change UNDER the total
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Cash")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Text(viewModel.cashTotal, format: .currency(code: currencyCode))
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.blue)
+                    }
+                }
+
+                // Day Change
                 HStack(spacing: 6) {
                     let change = viewModel.dayChangeTotal
                     let percent = viewModel.portfolioTotal > 0
@@ -191,11 +228,10 @@ struct PortfolioListView: View {
                 .foregroundColor(viewModel.dayChangeTotal < 0 ? .red : .green)
             }
             .padding(.horizontal)
-            .contentShape(Rectangle()) // whole header tappable
+            .contentShape(Rectangle())
             .onTapGesture {
                 Task { await viewModel.refreshMarketData() }
             }
-            // ❌ DeveloperLabel removed from PortfolioListView
 
             // MARK: - Action Buttons
             VStack(spacing: 0) {
@@ -218,17 +254,16 @@ struct PortfolioListView: View {
             .padding(.horizontal)
             .padding(.vertical, 2)
             .background(Color.primary.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            // MARK: - Positions List
+            // MARK: - Positions List (Cash Hidden)
             List {
-                ForEach(viewModel.analysisResults, id: \.symbol) { result in
+                ForEach(viewModel.analysisResults.filter { !$0.isCash }, id: \.symbol) { result in
                     NavigationLink(
                         destination: StockDetailView(
                             initialSymbol: result.symbol,
                             viewModel: viewModel
                         )
-                        .developerLabel("StockDetailView")
                     ) {
                         HStack {
                             VStack(alignment: .leading) {
@@ -242,6 +277,12 @@ struct PortfolioListView: View {
                             Text(result.currentPrice, format: .currency(code: currencyCode))
                         }
                         .padding(.vertical, 6)
+                    }
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        let symbol = viewModel.analysisResults.filter { !$0.isCash }[index].symbol
+                        viewModel.removePosition(symbol: symbol)
                     }
                 }
             }
@@ -266,9 +307,5 @@ struct PortfolioListView: View {
         }
         .buttonStyle(.plain)
         .foregroundColor(.accentColor)
-    }
-
-    private func trendLabel(for result: PortfolioAnalysisResult) -> String {
-        result.isCash ? "no-trend-cash" : result.trend.rawValue
     }
 }

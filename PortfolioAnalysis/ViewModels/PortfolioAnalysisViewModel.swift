@@ -107,6 +107,22 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Symbol Validation / Lookup
+
+    func validateSymbol(_ symbol: String) async -> (isValid: Bool, displayName: String) {
+        let trimmed = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !trimmed.isEmpty else { return (false, "") }
+        do {
+            let history = try await marketData.fetchPrices(for: trimmed)
+            if !history.isEmpty {
+                return (true, trimmed)
+            }
+            return (false, trimmed)
+        } catch {
+            return (false, trimmed)
+        }
+    }
+
     // MARK: - Refresh
 
     func refresh() async {
@@ -158,6 +174,8 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             )
         }
     }
+
+    // MARK: - Import
 
     func importPastedPositions(_ imported: [ImportedPosition]) {
         positions = imported
@@ -211,7 +229,6 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         runAnalysis()
     }
 
-    // ⭐⭐⭐ FULLY UPDATED METHOD — purchaseDate now supported
     func updateHolding(
         oldSymbol: String,
         newSymbol: String,
@@ -230,10 +247,8 @@ final class PortfolioAnalysisViewModel: ObservableObject {
             positions[index].costBasis = costBasis
         }
 
-        // ⭐ NEW: update purchase date
         positions[index].purchaseDate = purchaseDate
 
-        // Migrate price history if symbol changed
         if oldSymbol != newSymbol {
             if let oldHistory = priceHistory.removeValue(forKey: oldSymbol) {
                 priceHistory[newSymbol] = oldHistory
@@ -256,6 +271,18 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         positions.append(pos)
         Task { await diskStore.save(positions) }
         runAnalysis()
+    }
+
+    // ⭐ NEW — required by AddPositionView
+    func addManualPosition(_ pos: ImportedPosition) {
+        positions.append(pos)
+        analysisResults = []
+
+        Task {
+            await diskStore.save(positions)
+            await loadAllPriceHistory()
+            runAnalysis()
+        }
     }
 
     func removePosition(symbol: String) {
@@ -307,3 +334,5 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         return dayChangeTotal / (total - dayChangeTotal)
     }
 }
+//End of PortfolioAnalysisViewModel.swift
+
