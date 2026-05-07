@@ -14,9 +14,9 @@ struct StockPriceChartView: View {
     let referenceHigh: Double?
     let referenceHighColor: Color
     let quantity: Double
-    let costBasis: Double?
+    let costBasis: Double?      // still used for totals, not for chart annotation
     let purchaseDate: Date?
-    let unitCost: Double    // ← position.cost (price paid per share)
+    let unitCost: Double        // price paid per share
 
     @State private var dragLocation: PricePoint?
     @State private var dragX: CGFloat = 0
@@ -85,14 +85,6 @@ struct StockPriceChartView: View {
         return .gray
     }
 
-    // MARK: - Cost basis color
-
-    private var costBasisColor: Color {
-        guard let costBasis else { return .clear }
-        let last = filtered.last?.close ?? costBasis
-        return last >= costBasis ? .green : .red
-    }
-
     var body: some View {
         VStack(spacing: 10) {
 
@@ -117,36 +109,24 @@ struct StockPriceChartView: View {
                 .padding(.horizontal, 4)
             }
 
-            // MARK: - COST BASIS LABEL ABOVE CHART
-            if let purchaseDate {
-                HStack {
-                    Text("Cost Basis:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            // MARK: - UNIT COST LABEL ABOVE CHART
+            HStack {
+                Text("Unit Cost:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                    Text(unitCost, format: .currency(code: currencyCode))
-                        .font(.caption.weight(.semibold))
+                Text(unitCost, format: .currency(code: currencyCode))
+                    .font(.caption.weight(.semibold))
 
+                if let purchaseDate {
                     Text(purchaseDate, format: .dateTime.month().day().year())
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-
-                    Spacer()
                 }
-                .padding(.horizontal, 4)
-            } else {
-                HStack {
-                    Text("Cost Basis:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
 
-                    Text(unitCost, format: .currency(code: currencyCode))
-                        .font(.caption.weight(.semibold))
-
-                    Spacer()
-                }
-                .padding(.horizontal, 4)
+                Spacer()
             }
+            .padding(.horizontal, 4)
 
             GeometryReader { geo in
                 ZStack {
@@ -166,33 +146,30 @@ struct StockPriceChartView: View {
                                 .lineStyle(StrokeStyle(lineWidth: 2.5))
                             }
 
-                            // MARK: - 52WH LINE (THICKER)
+                            // MARK: - 52WH LINE
                             if let high = referenceHigh {
                                 RuleMark(y: .value("52WH", high))
                                     .foregroundStyle(referenceHighColor.opacity(0.45))
                                     .lineStyle(StrokeStyle(lineWidth: 3.0, dash: [4, 4]))
                             }
 
-                            // MARK: - COST BASIS LINE + LABEL
-                            if let costBasis {
-                                RuleMark(y: .value("Cost Basis", costBasis))
-                                    .foregroundStyle(costBasisColor.opacity(blink ? 0.95 : 0.35))
-                                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                                    .annotation(position: .topLeading, alignment: .leading) {
+                            // MARK: - UNIT COST LINE + LABEL
+                            RuleMark(y: .value("Unit Cost", unitCost))
+                                .foregroundStyle(Color.blue.opacity(blink ? 0.95 : 0.35))
+                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                .annotation(position: .topLeading, alignment: .leading) {
 
-                                        HStack(spacing: 4) {
-                                            Text("Cost")
-                                            Text(costBasis, format: .currency(code: currencyCode))
-                                            Text("(\(unitCost.formatted(.currency(code: currencyCode)))/sh)")
-                                        }
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .padding(4)
-                                        .background(.thinMaterial)
-                                        .cornerRadius(4)
-                                        .offset(x: 2, y: -2)
+                                    HStack(spacing: 4) {
+                                        Text("Unit Cost")
+                                        Text(unitCost, format: .currency(code: currencyCode))
                                     }
-                            }
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(4)
+                                    .background(.thinMaterial)
+                                    .cornerRadius(4)
+                                    .offset(x: 2, y: -2)
+                                }
                         }
                         .chartXScale(domain: xDomain)
                         .chartYScale(domain: yDomain)
@@ -203,7 +180,7 @@ struct StockPriceChartView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
 
-                    // MARK: - TOUCH POPUP (OPPOSITE SIDE OF FINGER)
+                    // MARK: - TOUCH POPUP
                     if let drag = dragLocation {
                         let positionValue = drag.close * quantity
                         let isTouchOnLeft = dragX < geo.size.width * 0.5
@@ -273,17 +250,5 @@ struct StockPriceChartView: View {
 
     private func nearestPoint(to date: Date) -> PricePoint? {
         filtered.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
-    }
-
-    // MARK: - Legend (unused but kept for structure)
-
-    private func legendItem(color: Color, title: String) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 7, height: 7)
-            Text(title)
-                .foregroundStyle(.secondary)
-        }
     }
 }

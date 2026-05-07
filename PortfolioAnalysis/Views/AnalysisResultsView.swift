@@ -20,8 +20,6 @@ struct AnalysisResultsView: View {
     @ObservedObject var viewModel: PortfolioAnalysisViewModel
     @State private var sortMode: ResultsSortMode = .gapAscending
 
-    // MARK: - Computed Totals
-
     private var cashTotal: Double {
         viewModel.analysisResults
             .filter { $0.isCash }
@@ -46,13 +44,8 @@ struct AnalysisResultsView: View {
             .reduce(0, +)
     }
 
-    // MARK: - Body
-
     var body: some View {
         VStack(spacing: 12) {
-
-            // Header row removed — no more duplicate title
-            // Sort menu moved into toolbar instead
 
             totalsSection
 
@@ -97,9 +90,6 @@ struct AnalysisResultsView: View {
         }
     }
 
-
-    // MARK: - Sorting Logic
-
     private var sortedResults: [PortfolioAnalysisResult] {
         let nonCash = viewModel.analysisResults.filter { !$0.isCash }
         let cash = viewModel.analysisResults.filter { $0.isCash }
@@ -107,45 +97,22 @@ struct AnalysisResultsView: View {
         let sortedNonCash: [PortfolioAnalysisResult]
 
         switch sortMode {
-
         case .gapAscending:
-            // 52WH: lowest (most negative) to highest
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                a.percentDifferenceFromYearHigh < b.percentDifferenceFromYearHigh
-            }
-
+            sortedNonCash = nonCash.sorted { $0.percentDifferenceFromYearHigh < $1.percentDifferenceFromYearHigh }
         case .gapDescending:
-            // 52WH: highest (closest to / above high) to lowest
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                a.percentDifferenceFromYearHigh > b.percentDifferenceFromYearHigh
-            }
-
+            sortedNonCash = nonCash.sorted { $0.percentDifferenceFromYearHigh > $1.percentDifferenceFromYearHigh }
         case .alphaAZ:
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                a.symbol < b.symbol
-            }
-
+            sortedNonCash = nonCash.sorted { $0.symbol < $1.symbol }
         case .alphaZA:
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                a.symbol > b.symbol
-            }
-
+            sortedNonCash = nonCash.sorted { $0.symbol > $1.symbol }
         case .dayGrowthAscending:
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                dayChange(for: a) < dayChange(for: b)
-            }
-
+            sortedNonCash = nonCash.sorted { dayChange(for: $0) < dayChange(for: $1) }
         case .dayGrowthDescending:
-            sortedNonCash = nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
-                dayChange(for: a) > dayChange(for: b)
-            }
+            sortedNonCash = nonCash.sorted { dayChange(for: $0) > dayChange(for: $1) }
         }
 
-        // Cash always at bottom
         return sortedNonCash + cash
     }
-
-    // MARK: - Totals Section
 
     private var totalsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -153,35 +120,30 @@ struct AnalysisResultsView: View {
             Text("Portfolio Summary")
                 .font(.headline)
 
-            // Portfolio Total (Cash + Positions)
             HStack {
                 Text("Total Value:")
                 Spacer()
                 Text(portfolioTotal, format: .currency(code: "USD"))
             }
 
-            // Cash Total
             HStack {
                 Text("Cash Total:")
                 Spacer()
                 Text(cashTotal, format: .currency(code: "USD"))
             }
 
-            // Invested Total
             HStack {
                 Text("Invested:")
                 Spacer()
                 Text(investedTotal, format: .currency(code: "USD"))
             }
 
-            // Total Gain/Loss
             HStack {
                 Text("Total Gain/Loss:")
                 Spacer()
                 Text(totalGainLoss, format: .currency(code: "USD"))
             }
 
-            // Day Change
             HStack {
                 Text("Day Change:")
                 Spacer()
@@ -191,8 +153,6 @@ struct AnalysisResultsView: View {
         }
         .padding(.horizontal)
     }
-
-    // MARK: - Helpers
 
     private func dayChange(for result: PortfolioAnalysisResult) -> Double {
         guard !result.isCash,
@@ -204,70 +164,5 @@ struct AnalysisResultsView: View {
         return (latest - previous) * result.quantity
     }
 }
+// End of file
 
-#if DEBUG
-struct AnalysisResultsView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationStack {
-            AnalysisResultsView(viewModel: sampleViewModel)
-        }
-    }
-
-    @MainActor
-    private static var sampleViewModel: PortfolioAnalysisViewModel {
-        let viewModel = PortfolioAnalysisViewModel()
-
-        viewModel.positions = [
-            ImportedPosition(
-                id: UUID(),
-                symbol: "AAPL",
-                name: "Apple Inc.",
-                quantity: 101.15,
-                price: 405.45,
-                value: 41_020.05,
-                costBasis: 26.29
-            ),
-            ImportedPosition(
-                id: UUID(),
-                symbol: "MSFT",
-                name: "Microsoft Corp.",
-                quantity: 42.0,
-                price: 420.12,
-                value: 17_644.99,
-                costBasis: 310.55
-            ),
-            ImportedPosition(
-                id: UUID(),
-                symbol: "CASH",
-                name: "Cash",
-                quantity: 1.0,
-                price: 12_345.67,
-                value: 12_345.67,
-                costBasis: nil
-            )
-        ]
-
-        viewModel.priceHistory = [
-            "AAPL": sampleHistory(start: 392.10, step: 3.25),
-            "MSFT": sampleHistory(start: 408.20, step: 2.10)
-        ]
-
-        viewModel.runAnalysis()
-        return viewModel
-    }
-
-    private static func sampleHistory(start: Double, step: Double) -> [PricePoint] {
-        let calendar = Calendar.current
-        let today = Date()
-
-        return (0..<8).map { index in
-            let offsetDate = calendar.date(byAdding: .day, value: -7 + index, to: today) ?? today
-            return PricePoint(
-                date: offsetDate,
-                close: start + (Double(index) * step)
-            )
-        }
-    }
-}
-#endif
-// MARK: End of AnalysisResultsView.swift

@@ -262,7 +262,8 @@ struct PortfolioListView: View {
                     NavigationLink(
                         destination: StockDetailView(
                             initialSymbol: result.symbol,
-                            viewModel: viewModel
+                            viewModel: viewModel,
+                            orderedResults: viewModel.analysisResults
                         )
                     ) {
                         HStack {
