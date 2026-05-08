@@ -77,7 +77,10 @@ struct AddPositionView: View {
         let qty = Double(quantity.replacingOccurrences(of: ",", with: "")) ?? 0
         let parsedCost = Double(costBasis.replacingOccurrences(of: ",", with: "")) ?? 0
 
-        // ⭐ Corrected initializer — no isCash, includes unitCost
+        // ⭐ NEW: Default account assignment for manual entries
+        let defaultAccountNumber = "MANUAL"
+        let defaultAccountNickname = "Manual Entry"
+
         let pos = ImportedPosition(
             symbol: trimmed.uppercased(),
             name: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -87,11 +90,15 @@ struct AddPositionView: View {
             price: 0,                // updated later by market data
             value: 0,                // derived later
             costBasis: parsedCost,
-            unitCost: nil,           // NEW — required by updated model
-            purchaseDate: purchaseDate
+            unitCost: nil,
+            purchaseDate: purchaseDate,
+            accountNumber: defaultAccountNumber,
+            accountNickname: defaultAccountNickname
         )
 
         viewModel.addManualPosition(pos)
         dismiss()
     }
 }
+// End of AddPositionView.swift
+

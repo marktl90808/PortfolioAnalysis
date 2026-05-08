@@ -13,7 +13,7 @@ struct EditPositionView: View {
 
     @State private var symbol: String
     @State private var quantity: String
-    @State private var costBasis: String
+    @State private var unitCost: String
     @State private var purchaseDate: Date?
 
     init(viewModel: PortfolioAnalysisViewModel, position: ImportedPosition) {
@@ -22,8 +22,12 @@ struct EditPositionView: View {
 
         self._symbol = State(initialValue: position.symbol)
         self._quantity = State(initialValue: String(position.quantity))
-        self._costBasis = State(initialValue: position.costBasis.map { String($0) } ?? "")
+        self._unitCost = State(initialValue: position.unitCost.map { String($0) } ?? "")
         self._purchaseDate = State(initialValue: position.purchaseDate)
+    }
+
+    private var currencyCode: String {
+        Locale.current.currency?.identifier ?? "USD"
     }
 
     var body: some View {
@@ -31,27 +35,42 @@ struct EditPositionView: View {
 
             // MARK: - Holding Section
             Section("Holding") {
-                TextField("Symbol", text: $symbol)
 
-                TextField("Quantity", text: $quantity)
-                    .keyboardType(.decimalPad)
+                LabeledContent("Symbol") {
+                    TextField("Symbol", text: $symbol)
+                }
 
-                TextField("Cost Basis", text: $costBasis)
-                    .keyboardType(.decimalPad)
+                LabeledContent("Quantity (Shares)") {
+                    TextField("Quantity", text: $quantity)
+                        .keyboardType(.decimalPad)
+                }
 
-                // ⭐ NEW: Purchase Date
-                DatePicker(
-                    "Purchase Date",
-                    selection: Binding(
-                        get: { purchaseDate ?? Date() },
-                        set: { purchaseDate = $0 }
-                    ),
-                    displayedComponents: .date
-                )
-                .environment(\.locale, Locale(identifier: "en_US"))
-                .opacity(purchaseDate == nil ? 0.5 : 1.0)
+                LabeledContent("Unit Cost (per share)") {
+                    TextField("Unit Cost", text: $unitCost)
+                        .keyboardType(.decimalPad)
+                }
 
-                // Clear Date Button
+                // Computed total cost basis (read-only)
+                if let qty = Double(quantity),
+                   let uCost = Double(unitCost) {
+                    LabeledContent("Total Cost Basis") {
+                        Text((qty * uCost).formatted(.currency(code: currencyCode)))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                LabeledContent("Purchase Date") {
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { purchaseDate ?? Date() },
+                            set: { purchaseDate = $0 }
+                        ),
+                        displayedComponents: .date
+                    )
+                    .environment(\.locale, Locale(identifier: "en_US"))
+                }
+
                 if purchaseDate != nil {
                     Button("Clear Purchase Date") {
                         purchaseDate = nil
@@ -82,18 +101,20 @@ struct EditPositionView: View {
         let symbolToUse = trimmedSymbol.isEmpty ? position.symbol : trimmedSymbol
 
         let qty = Double(quantity.trimmingCharacters(in: .whitespacesAndNewlines)) ?? position.quantity
-        let parsedCost = Double(costBasis.trimmingCharacters(in: .whitespacesAndNewlines))
+        let uCost = Double(unitCost.trimmingCharacters(in: .whitespacesAndNewlines))
+        let totalCostBasis = (qty * (uCost ?? position.unitCost ?? 0))
 
         Task { @MainActor in
             await viewModel.updateHolding(
                 oldSymbol: position.symbol,
                 newSymbol: symbolToUse,
                 quantity: qty,
-                costBasis: parsedCost,
-                purchaseDate: purchaseDate   // ⭐ NEW FIELD PASSED TO VIEWMODEL
+                costBasis: totalCostBasis,
+                purchaseDate: purchaseDate
             )
             dismiss()
         }
     }
 }
+
 // End of EditPositionView.swift

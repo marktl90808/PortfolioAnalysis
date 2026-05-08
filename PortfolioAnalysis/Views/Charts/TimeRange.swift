@@ -50,3 +50,4 @@ extension TimeRange {
         return start...now
     }
 }
+// End of TimeRange.swift

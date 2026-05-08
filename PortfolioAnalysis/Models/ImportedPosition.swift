@@ -21,10 +21,14 @@ struct ImportedPosition: Identifiable, Codable, Sendable {
 
     // Cost data
     var costBasis: Double?     // total cost paid
-    var unitCost: Double?      // ⭐ NEW: price paid per share (from brokerage import)
+    var unitCost: Double?      // price paid per share
 
-    // Optional purchase date
+    // Optional purchase date (manually entered by you)
     var purchaseDate: Date?
+
+    // ⭐ NEW — Account support
+    var accountNumber: String
+    var accountNickname: String
 
     // MARK: - Initializer
     init(
@@ -36,7 +40,9 @@ struct ImportedPosition: Identifiable, Codable, Sendable {
         value: Double,
         costBasis: Double?,
         unitCost: Double?,
-        purchaseDate: Date?
+        purchaseDate: Date?,
+        accountNumber: String,
+        accountNickname: String
     ) {
         self.id = id
         self.symbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -47,21 +53,18 @@ struct ImportedPosition: Identifiable, Codable, Sendable {
         self.costBasis = costBasis
         self.unitCost = unitCost
         self.purchaseDate = purchaseDate
+        self.accountNumber = accountNumber
+        self.accountNickname = accountNickname
     }
-
-
 }
 
 // MARK: - Cash Detection
 
 extension ImportedPosition {
     var isCash: Bool {
-        // Cash-like detection
         if symbol.uppercased().contains("CASH") { return true }
         if name.uppercased().contains("CASH") { return true }
 
-        // Money market / sweep accounts often have:
-        // quantity == value == price == 1.00
         if costBasis == nil && quantity == 1 && value == price {
             return true
         }
@@ -130,25 +133,29 @@ extension ImportedPosition {
                 row[header] = columns[index]
             }
 
-            // Extract fields
+            // ⭐ Account fields
+            let accountNumber = row["Account Number"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "UNKNOWN"
+            let accountNickname = row["Account Nick Name"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? accountNumber
+
+            // Symbol + description
             let symbol = row["Symbol/CUSIP"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .uppercased() ?? ""
+
             let description = (row["Description"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? symbol)
                 .smartTitleCase()
 
-
+            // Quantity, price, value
             let quantity = Double(row["Quantity"]?.cleanNumber() ?? "") ?? 0
             let marketPrice = Double(row["Price ($)"]?.cleanCurrency() ?? "") ?? 0
             let value = Double(row["Value ($)"]?.cleanCurrency() ?? "") ?? (marketPrice * quantity)
 
-            let costBasis = Double(row["Cost Basis ($)"]?.cleanCurrency() ?? "") ?? nil
+            // Cost basis + unit cost
+            let costBasis = Double(row["Cost Basis ($)"]?.cleanCurrency() ?? "")
+            let unitCost = Double(row["Unit Cost"]?.cleanCurrency() ?? "")
 
-            // ⭐ NEW: Unit Cost
-            let unitCost = Double(row["Unit Cost"]?.cleanCurrency() ?? "") ?? nil
-
-            // Purchase date
-            let purchaseDate = row["Price as Of"]?.parseDate()
+            // ⭐ purchaseDate is NOT in the TSV — leave nil
+            let purchaseDate: Date? = nil
 
             // Build the position
             let position = ImportedPosition(
@@ -158,8 +165,10 @@ extension ImportedPosition {
                 price: marketPrice,
                 value: value,
                 costBasis: costBasis,
-                unitCost: unitCost,          // ⭐ NEW
-                purchaseDate: purchaseDate
+                unitCost: unitCost,
+                purchaseDate: purchaseDate,
+                accountNumber: accountNumber,
+                accountNickname: accountNickname
             )
 
             positions.append(position)
@@ -168,3 +177,5 @@ extension ImportedPosition {
         return positions
     }
 }
+// End of ImportedPosition.swift
+

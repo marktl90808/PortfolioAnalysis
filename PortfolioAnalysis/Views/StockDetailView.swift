@@ -11,18 +11,18 @@ struct StockDetailView: View {
     let history: [PricePoint]
     let referenceHigh: Double?
     let referenceHighColor: Color
-    let range: TimeRange
     let showMA20: Bool
     let showMA200: Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var showingEdit = false
+    @State private var confirmSell = false
+
+    @State private var selectedRange: TimeRange = .oneYear
 
     private var currencyCode: String {
         Locale.current.currency?.identifier ?? "USD"
     }
-
-    // MARK: - Computed Values
 
     private var latestPrice: Double {
         history.last?.close ?? position.price
@@ -56,11 +56,10 @@ struct StockDetailView: View {
                         .font(.largeTitle.bold())
 
                     if !position.name.isEmpty {
-                        Text(position.name.smartTitleCase())
+                        Text(position.name)
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
-
 
                     HStack(spacing: 12) {
                         Text(latestPrice, format: .currency(code: currencyCode))
@@ -75,10 +74,25 @@ struct StockDetailView: View {
                 }
                 .padding(.horizontal)
 
+                // MARK: - RANGE PICKER
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        rangeButton(.oneDay, label: "1D")
+                        rangeButton(.oneWeek, label: "1W")
+                        rangeButton(.oneMonth, label: "1M")
+                        rangeButton(.threeMonths, label: "3M")
+                        rangeButton(.sixMonths, label: "6M")
+                        rangeButton(.oneYear, label: "1Y")
+                        rangeButton(.ytd, label: "YTD")
+                        rangeButton(.sincePurchase, label: "Since Buy")
+                    }
+                    .padding(.horizontal)
+                }
+
                 // MARK: - CHART
                 StockPriceChartView(
                     history: history,
-                    range: range,
+                    range: selectedRange,
                     showMA20: showMA20,
                     showMA200: showMA200,
                     referenceHigh: referenceHigh,
@@ -86,7 +100,7 @@ struct StockDetailView: View {
                     quantity: position.quantity,
                     costBasis: position.costBasis,
                     purchaseDate: position.purchaseDate,
-                    unitCost: position.unitCost ?? 0
+                    unitCost: position.unitCost
                 )
                 .frame(height: 300)
                 .padding(.horizontal)
@@ -97,14 +111,10 @@ struct StockDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 4)
 
-                    // ⭐ Tappable quantity row
                     Button {
                         showingEdit = true
                     } label: {
-                        detailRow(
-                            label: "Quantity:",
-                            value: String(position.quantity)
-                        )
+                        detailRow(label: "Quantity:", value: String(position.quantity))
                     }
                     .buttonStyle(.plain)
 
@@ -114,8 +124,7 @@ struct StockDetailView: View {
                     )
 
                     if let unitCost = position.unitCost {
-                        let totalCost = (position.costBasis ?? (unitCost * position.quantity))
-
+                        let totalCost = unitCost * position.quantity
                         detailRow(
                             label: "Cost:",
                             value: "at \(unitCost.formatted(.currency(code: currencyCode))) × \(String(position.quantity)) = \(totalCost.formatted(.currency(code: currencyCode)))"
@@ -133,37 +142,60 @@ struct StockDetailView: View {
                             value: purchaseDate.formatted(.dateTime.month().day().year())
                         )
                     }
+
+                    Button(role: .destructive) {
+                        confirmSell = true
+                    } label: {
+                        Text("Sell Position")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .padding(.top, 12)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 20)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-
-        // ⭐ Correct parameter order for EditPositionView
         .sheet(isPresented: $showingEdit) {
             EditPositionView(viewModel: viewModel, position: position)
         }
+        .confirmationDialog("Sell this position?", isPresented: $confirmSell) {
+            Button("Sell", role: .destructive) {
+                Task {
+                    await viewModel.sellPosition(symbol: position.symbol)
+                    await MainActor.run { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
     }
 
-    // MARK: - Detail Row Helper
-
-    @ViewBuilder
     private func detailRow(label: String, value: String) -> some View {
         HStack {
-            Text(label)
-                .font(.subheadline.weight(.semibold))
+            Text(label).font(.subheadline.weight(.semibold))
             Spacer()
             Text(value)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
     }
-}
 
-//
-// MARK: - COMPATIBILITY INITIALIZER
-//
+    private func rangeButton(_ value: TimeRange, label: String) -> some View {
+        Button {
+            selectedRange = value
+        } label: {
+            Text(label)
+                .font(.caption)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(selectedRange == value ? Color.accentColor.opacity(0.2) : Color.clear)
+                .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 extension StockDetailView {
     init(
@@ -183,9 +215,10 @@ extension StockDetailView {
             history: history,
             referenceHigh: referenceHigh,
             referenceHighColor: .blue,
-            range: .oneYear,
             showMA20: false,
             showMA200: false
         )
     }
 }
+// End of file StockDetailView.swift
+

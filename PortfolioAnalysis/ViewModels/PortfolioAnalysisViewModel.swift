@@ -19,6 +19,47 @@ final class PortfolioAnalysisViewModel: ObservableObject {
     @Published var loadingMessage: String? = nil
     @Published var slopeMethod: SlopeMethod = .simpleDelta
 
+    // MARK: - Sorting
+
+    enum SortMode {
+        case symbol
+        case value
+        case gain
+        case accountNumber
+    }
+
+    @Published var sortMode: SortMode = .symbol
+
+    // MARK: - Account Totals Summary
+
+    struct AccountTotals: Identifiable {
+        let id: String              // accountNumber
+        let nickname: String        // accountNickname
+        let totalValue: Double
+        let cashValue: Double
+    }
+
+    var accountSummaries: [AccountTotals] {
+        let grouped = Dictionary(grouping: positions, by: { $0.accountNumber })
+
+        return grouped.map { accountNumber, positions in
+            let nickname = positions.first?.accountNickname ?? accountNumber
+
+            let totalValue = positions.reduce(0) { $0 + $1.value }
+            let cashValue = positions
+                .filter { $0.isCash }
+                .reduce(0) { $0 + $1.value }
+
+            return AccountTotals(
+                id: accountNumber,
+                nickname: nickname,
+                totalValue: totalValue,
+                cashValue: cashValue
+            )
+        }
+        .sorted { $0.nickname < $1.nickname }
+    }
+
     // MARK: - Services
 
     private let diskStore = DiskPortfolioStore.shared
@@ -314,6 +355,43 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         }
     }
 
+    // MARK: Sell a position, convert profit to cash, and update the portfolio accordingly
+    func sellPosition(symbol: String) async {
+        guard let index = positions.firstIndex(where: { $0.symbol == symbol }) else { return }
+
+        let pos = positions[index]
+        let proceeds = pos.value
+
+        // 1. Remove the sold position
+        positions.remove(at: index)
+        priceHistory.removeValue(forKey: symbol)
+
+        // 2. Add proceeds to cash
+        if let cashIndex = positions.firstIndex(where: { $0.isCash }) {
+            positions[cashIndex].value += proceeds
+        } else {
+            // Create a new cash position
+            let cash = ImportedPosition(
+                symbol: "CASH",
+                name: "Cash",
+                quantity: 1,
+                price: proceeds,
+                value: proceeds,
+                costBasis: nil,
+                unitCost: nil,
+                purchaseDate: nil,
+                accountNumber: "CASH",
+                accountNickname: "Cash"
+            )
+            positions.append(cash)
+        }
+
+        // 3. Save + re-run analysis
+        await diskStore.save(positions)
+        runAnalysis()
+    }
+
+    // MARK: Remove a position without selling (e.g. for cleanup or error correction)
     func removePosition(symbol: String) {
         positions.removeAll { $0.symbol == symbol }
         priceHistory.removeValue(forKey: symbol)
@@ -362,8 +440,41 @@ final class PortfolioAnalysisViewModel: ObservableObject {
         guard total != 0 else { return 0 }
         return dayChangeTotal / (total - dayChangeTotal)
     }
+
+    // MARK: - Sorting Helper for UI
+
+    func sortedResultsExcludingCash() -> [PortfolioAnalysisResult] {
+        let nonCash: [PortfolioAnalysisResult] = analysisResults.filter { !$0.isCash }
+
+        switch sortMode {
+
+        case .symbol:
+            return nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
+                a.symbol < b.symbol
+            }
+
+        case .value:
+            return nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
+                a.totalValue > b.totalValue
+            }
+
+        case .gain:
+            return nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
+                a.gainLoss > b.gainLoss
+            }
+
+        case .accountNumber:
+            return nonCash.sorted { (a: PortfolioAnalysisResult, b: PortfolioAnalysisResult) in
+                let aAcct = positions.first(where: { $0.symbol == a.symbol })?.accountNumber ?? ""
+                let bAcct = positions.first(where: { $0.symbol == b.symbol })?.accountNumber ?? ""
+
+                if aAcct == bAcct {
+                    return a.symbol < b.symbol
+                }
+                return aAcct < bAcct
+            }
+        }
+    }
 }
-//End of PortfolioAnalysisViewModel.swift
 
 //End of PortfolioAnalysisViewModel.swift
-

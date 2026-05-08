@@ -3,20 +3,25 @@
 //  PortfolioAnalysis
 //
 
+//
+//  StockPriceChartView.swift
+//  PortfolioAnalysis
+//
+
 import SwiftUI
 import Charts
 
 struct StockPriceChartView: View {
     let history: [PricePoint]
     let range: TimeRange
-    let showMA20: Bool      // ignored
-    let showMA200: Bool     // ignored
+    let showMA20: Bool      // currently unused
+    let showMA200: Bool     // currently unused
     let referenceHigh: Double?
     let referenceHighColor: Color
     let quantity: Double
-    let costBasis: Double?      // still used for totals, not for chart annotation
+    let costBasis: Double?
     let purchaseDate: Date?
-    let unitCost: Double        // price paid per share
+    let unitCost: Double?
 
     @State private var dragLocation: PricePoint?
     @State private var dragX: CGFloat = 0
@@ -110,23 +115,25 @@ struct StockPriceChartView: View {
             }
 
             // MARK: - UNIT COST LABEL ABOVE CHART
-            HStack {
-                Text("Unit Cost:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(unitCost, format: .currency(code: currencyCode))
-                    .font(.caption.weight(.semibold))
-
-                if let purchaseDate {
-                    Text(purchaseDate, format: .dateTime.month().day().year())
-                        .font(.caption2)
+            if let unitCost {
+                HStack {
+                    Text("Unit Cost:")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                }
 
-                Spacer()
+                    Text(unitCost, format: .currency(code: currencyCode))
+                        .font(.caption.weight(.semibold))
+
+                    if let purchaseDate {
+                        Text(purchaseDate, format: .dateTime.month().day().year())
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
 
             GeometryReader { geo in
                 ZStack {
@@ -146,34 +153,42 @@ struct StockPriceChartView: View {
                                 .lineStyle(StrokeStyle(lineWidth: 2.5))
                             }
 
-                            // MARK: - 52WH LINE
+                            // 52WH LINE
                             if let high = referenceHigh {
                                 RuleMark(y: .value("52WH", high))
                                     .foregroundStyle(referenceHighColor.opacity(0.45))
                                     .lineStyle(StrokeStyle(lineWidth: 3.0, dash: [4, 4]))
                             }
 
-                            // MARK: - UNIT COST LINE + LABEL
-                            RuleMark(y: .value("Unit Cost", unitCost))
-                                .foregroundStyle(Color.blue.opacity(blink ? 0.95 : 0.35))
-                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                                .annotation(position: .topLeading, alignment: .leading) {
-
-                                    HStack(spacing: 4) {
-                                        Text("Unit Cost")
-                                        Text(unitCost, format: .currency(code: currencyCode))
+                            // UNIT COST LINE + LABEL
+                            if let unitCost {
+                                RuleMark(y: .value("Unit Cost", unitCost))
+                                    .foregroundStyle(Color.blue.opacity(blink ? 0.95 : 0.35))
+                                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                    .annotation(position: .topLeading, alignment: .leading) {
+                                        HStack(spacing: 4) {
+                                            Text("Unit Cost")
+                                            Text(unitCost, format: .currency(code: currencyCode))
+                                        }
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .padding(4)
+                                        .background(.thinMaterial)
+                                        .cornerRadius(4)
+                                        .offset(x: 2, y: -2)
                                     }
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(4)
-                                    .background(.thinMaterial)
-                                    .cornerRadius(4)
-                                    .offset(x: 2, y: -2)
-                                }
+                            }
                         }
                         .chartXScale(domain: xDomain)
                         .chartYScale(domain: yDomain)
+                        .chartPlotStyle { plot in
+                            plot.padding(.trailing, 32)   // keep line away from Y-axis labels
+                        }
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6))
+                        }
                         .padding(.vertical, 8)
+                        .clipped()                       // prevent drawing under axes
 
                     } else {
                         ProgressView()
@@ -183,9 +198,9 @@ struct StockPriceChartView: View {
                     // MARK: - TOUCH POPUP
                     if let drag = dragLocation {
                         let positionValue = drag.close * quantity
-                        let isTouchOnLeft = dragX < geo.size.width * 0.5
+                        let isLeft = dragX < geo.size.width * 0.5
 
-                        VStack(alignment: isTouchOnLeft ? .trailing : .leading, spacing: 4) {
+                        VStack(alignment: isLeft ? .trailing : .leading, spacing: 4) {
 
                             Text(drag.close, format: .currency(code: currencyCode))
                                 .font(.caption.bold())
@@ -201,17 +216,16 @@ struct StockPriceChartView: View {
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .shadow(radius: 2)
-                        .frame(
-                            maxWidth: .infinity,
-                            alignment: isTouchOnLeft ? .trailing : .leading
-                        )
-                        .padding(isTouchOnLeft ? .trailing : .leading, 8)
+                        .frame(maxWidth: .infinity, alignment: isLeft ? .trailing : .leading)
+                        .padding(isLeft ? .trailing : .leading, 8)
                         .padding(.top, 4)
+                        .zIndex(10)
 
                         Rectangle()
                             .fill(Color.secondary.opacity(0.35))
                             .frame(width: 1)
                             .position(x: dragX, y: geo.size.height / 2)
+                            .zIndex(9)
                     }
                 }
                 .gesture(
